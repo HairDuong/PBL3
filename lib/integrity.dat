@@ -1,0 +1,5 @@
+madhephaestus/ESP32Servo@^3.0.5
+adafruit/Adafruit Unified Sensor@^1.1.14
+adafruit/DHT sensor library@^1.4.6
+adafruit/Adafruit SH110X@^2.1.11
+knolleary/PubSubClient@^2.8
