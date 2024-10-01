@@ -15,11 +15,9 @@ int targetHour = 12;
 int targetMinute = 00;
 int targetSecond = 0;
 
-
 //servo
 #define servoPin 17
 Servo myServo;
-
 
 // Nhiet do và do am
 #define DHTPIN 5
@@ -55,8 +53,8 @@ const unsigned long displayInterval = 5000;
 bool showSensorData = true; 
 
 // WiFi và MQTT
-const char *ssid = "Phong6A6B"; 
-const char *password = "0918784850"; 
+const char *ssid = "Hoang11"; 
+const char *password = "1234567890"; 
 const char *mqtt_broker = "broker.emqx.io";
 const char *topic0 = "esp32/temp";
 const char *topic1 = "esp32/hum";
@@ -76,49 +74,13 @@ float temperature = 0.0;
 float humidity = 0.0;
 int airQuality = 0;
 float distance = 0.0;
+
 // variable timer of automaticfeeding
 unsigned long lastfeeding=0;
 unsigned long autofeedinginterval= 6*1000; // 1p lay thoi gian 1 lan
 
-
-void callback(char *topic, byte *payload, unsigned int length) {
-  String message;
-  for (int i = 0; i < length; i++) {
-    message += (char)payload[i];
-  }
-
-  if (String(topic) == topic4) {
-    isFanOn = message == "ON";
-    digitalWrite(FAN_RELAY_PIN, isFanOn ? HIGH : LOW);
-  }
-  if (String(topic) == topic5) {
-    isPumpOn = message == "ON";
-    digitalWrite(PUMP_RELAY_PIN, isPumpOn ? HIGH : LOW);
-  }
-}
-
-void automaticfeeding ()
-{
-  struct tm timeinfo;
-  // Lấy thời gian thực
-   
-  if (!getLocalTime(&timeinfo)) {
-    Serial.println("Không thể lấy thời gian từ NTP Server");
-    return;
-  }
-  // In ra thời gian hiện tại
-  Serial.println(&timeinfo, "Thời gian hiện tại: %H:%M:%S");
-  // Kiểm tra xem có đúng thời gian điều khiển servo không
-  if (timeinfo.tm_hour == targetHour && timeinfo.tm_min == targetMinute )
-   {
-    // Điều khiển servo (ví dụ: xoay đến góc 90 độ)
-    Serial.println("Đúng giờ! Điều khiển servo đến góc 90 độ.");
-    myServo.write(90);
-   }
-}
-
 void setup() {
-  Serial.begin(9600);
+  Serial.begin(115200);
 
   pinMode(TRIG_PIN, OUTPUT);
   pinMode(ECHO_PIN, INPUT_PULLDOWN);
@@ -136,7 +98,6 @@ void setup() {
   myServo.write(0);
   // the first update time
   automaticfeeding();
-
 
   if (!display.begin(0x3C, true)) {
     Serial.println("OLED initialization failed");
@@ -188,19 +149,6 @@ String readUltrasonicSensor() {
 
   distance = (duration * 0.034) / 2;
   return String(distance);
-  
-}
-
-String ratefood ()
-{
-  float distanceOrigin = 8.0;
-  float foodAvailable = (1.0- (distance/distanceOrigin))*100.0;
-  Serial.println(" distance ");
-  Serial.println(distance );
-  Serial.println(" foodAvailable ");
-  Serial.println(foodAvailable);
-  
-  return String(foodAvailable);
 }
 
 void handleFanControl() {
@@ -235,33 +183,68 @@ void handlePumpControl() {
   lastPumpButtonState = PumpButtonState;
 }
 
+void automaticfeeding (){
+  struct tm timeinfo;
+  // Lấy thời gian thực
+   
+  if (!getLocalTime(&timeinfo)) {
+    Serial.println("Không thể lấy thời gian từ NTP Server");
+    return;
+  }
+  // In ra thời gian hiện tại
+  Serial.println(&timeinfo, "Thời gian hiện tại: %H:%M:%S");
+  // Kiểm tra xem có đúng thời gian điều khiển servo không
+  if (timeinfo.tm_hour == targetHour && timeinfo.tm_min == targetMinute )
+   {
+    // Điều khiển servo (ví dụ: xoay đến góc 90 độ)
+    Serial.println("Đúng giờ! Điều khiển servo đến góc 90 độ.");
+    myServo.write(90);
+   }
+}
+
+String ratefood (){
+  float distanceOrigin = 8.0;
+  float foodAvailable = (1.0- (distance/distanceOrigin))*100.0;
+  Serial.println(" distance ");
+  Serial.println(distance );
+  Serial.println(" foodAvailable ");
+  Serial.println(foodAvailable);
+  
+  return String(foodAvailable);
+}
+
 void updateStatusDisplay() {
   unsigned long currentMillis = millis();
   
   // Cập nhật dữ liệu cảm biến mỗi 2 giây
   if (currentMillis - previousSensorMillis >= updateSensorInterval) {
     previousSensorMillis = currentMillis;
-    readUltrasonicSensor();
-     ratefood();
+    
     temperature = dht.readTemperature();
     humidity = dht.readHumidity();
     airQuality = analogRead(MQ135_PIN);
-    String rate = ratefood();
+    String ultrasonicDistance = readUltrasonicSensor();
 
     // Gửi dữ liệu cảm biến lên MQTT
     client.publish(topic0, String(temperature).c_str());
     client.publish(topic1, String(humidity).c_str());
     client.publish(topic2, String(airQuality).c_str());
-    client.publish(topic3, rate.c_str());
+    client.publish(topic3, ultrasonicDistance.c_str());
   }
 
-  //Đổi trạng thái hiển thị mỗi 5 giây
+  if (currentMillis - lastfeeding >= autofeedinginterval) 
+  {
+    lastfeeding = currentMillis;
+    automaticfeeding();
+  }
+
+  // Đổi trạng thái hiển thị mỗi 5 giây
   if (currentMillis - previousDisplayMillis >= displayInterval) {
     previousDisplayMillis = currentMillis;
     showSensorData = !showSensorData; // Đảo trạng thái hiển thị
   }
 
-  //Cập nhật hiển thị trên OLED
+  // Cập nhật hiển thị trên OLED
   display.clearDisplay();
   display.setTextSize(1);
   display.setTextColor(SH110X_WHITE);
@@ -272,7 +255,7 @@ void updateStatusDisplay() {
     display.println("Temp: " + String(temperature) + " C");
     display.println("Humidity: " + String(humidity) + " %");
     display.println("Air Quality: " + String(airQuality));
-    display.println("foodAvailable: " + ratefood() + " %");
+    display.println("Distance: " + readUltrasonicSensor() + " cm");
   } else {
     display.println("Device Status:");
     display.println(isFanOn ? "Fan: ON" : "Fan: OFF");
@@ -282,22 +265,25 @@ void updateStatusDisplay() {
   display.display();
 }
 
+void callback(char *topic, byte *payload, unsigned int length) {
+  String message;
+  for (int i = 0; i < length; i++) {
+    message += (char)payload[i];
+  }
 
-
+  if (String(topic) == topic4) {
+    isFanOn = message == "ON";
+    digitalWrite(FAN_RELAY_PIN, isFanOn ? HIGH : LOW);
+  }
+  if (String(topic) == topic5) {
+    isPumpOn = message == "ON";
+    digitalWrite(PUMP_RELAY_PIN, isPumpOn ? HIGH : LOW);
+  }
+}
 
 void loop() {
   handleFanControl();
   handlePumpControl();
- 
- 
-   updateStatusDisplay();
-  
-   unsigned long currentMillis = millis(); 
-  if (currentMillis - lastfeeding >= autofeedinginterval) 
-  {
-    automaticfeeding();
-   lastfeeding = currentMillis;
-  }
+  updateStatusDisplay();
   client.loop();
-
 }
