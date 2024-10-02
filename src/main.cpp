@@ -3,23 +3,23 @@
 #include <Wire.h>
 #include <Adafruit_SH110X.h>
 #include <DHT.h>
-#include<ESP32Servo.h>
+#include <ESP32Servo.h>
 #include <time.h>
 
 // Cấu hình NTP
-const long  gmtOffset_sec = 7 * 3600;   // GMT+7
-const int   daylightOffset_sec = 0;
+const long gmtOffset_sec = 7 * 3600;   // GMT+7
+const int daylightOffset_sec = 0;
 
 // Thời gian để điều khiển servo (giả sử điều khiển lúc 12:00:00)
 int targetHour = 12;
 int targetMinute = 00;
 int targetSecond = 0;
 
-//servo
+// Servo
 #define servoPin 17
 Servo myServo;
 
-// Nhiet do và do am
+// Nhiệt độ và độ ẩm
 #define DHTPIN 5
 #define DHTTYPE DHT11
 DHT dht(DHTPIN, DHTTYPE);
@@ -27,18 +27,18 @@ DHT dht(DHTPIN, DHTTYPE);
 // MQ135
 #define MQ135_PIN 34
 
-// Sieu am
+// Siêu âm
 #define TRIG_PIN 19
 #define ECHO_PIN 18
 long duration;
 
-// Quat
+// Quạt
 #define FAN_BUTTON_PIN 23  
-#define FAN_RELAY_PIN  27  
+#define FAN_RELAY_PIN 27  
 bool isFanOn = false;  
 int lastFanButtonState = HIGH;  
 
-// May bơm
+// Máy bơm
 #define PUMP_BUTTON_PIN 4
 #define PUMP_RELAY_PIN 25
 bool isPumpOn = false;  
@@ -51,6 +51,9 @@ unsigned long previousDisplayMillis = 0;
 const unsigned long updateSensorInterval = 2000; 
 const unsigned long displayInterval = 5000; 
 bool showSensorData = true; 
+
+#define TEMP_THRESHOLD 30.0  // Ngưỡng nhiệt độ để bật quạt (đơn vị: độ C)
+volatile bool temperatureExceeded = false;
 
 // WiFi và MQTT
 const char *ssid = "Hoang11"; 
@@ -75,28 +78,23 @@ float humidity = 0.0;
 int airQuality = 0;
 float distance = 0.0;
 
-// variable timer of automaticfeeding
-unsigned long lastfeeding=0;
-unsigned long autofeedinginterval= 6*1000; // 1p lay thoi gian 1 lan
+// Biến timer cho tự động cho ăn
+unsigned long lastfeeding = 0;
+unsigned long autofeedinginterval = 6 * 1000; // 6 giây
 
 void setup() {
   Serial.begin(115200);
-
+  
   pinMode(TRIG_PIN, OUTPUT);
   pinMode(ECHO_PIN, INPUT_PULLDOWN);
   dht.begin();
 
   // Gắn chân servo vào đối tượng servo
   myServo.attach(servoPin);
-  // Cấu hình NTP
   configTime(gmtOffset_sec, daylightOffset_sec, "pool.ntp.org", "time.nist.gov");
-
-  // Khởi tạo Servo
-  myServo.attach(servoPin);
 
   // Đặt vị trí ban đầu cho servo
   myServo.write(0);
-  // the first update time
   automaticfeeding();
 
   if (!display.begin(0x3C, true)) {
@@ -135,9 +133,12 @@ void setup() {
   }
   client.subscribe(topic4);
   client.subscribe(topic5);
+
+
 }
 
 String readUltrasonicSensor() {
+   
   digitalWrite(TRIG_PIN, LOW);
   delayMicroseconds(2);
   digitalWrite(TRIG_PIN, HIGH);
@@ -149,6 +150,7 @@ String readUltrasonicSensor() {
 
   distance = (duration * 0.034) / 2;
   return String(distance);
+}
 }
 
 void handleFanControl() {
@@ -183,10 +185,9 @@ void handlePumpControl() {
   lastPumpButtonState = PumpButtonState;
 }
 
-void automaticfeeding (){
+void automaticfeeding() {
   struct tm timeinfo;
   // Lấy thời gian thực
-   
   if (!getLocalTime(&timeinfo)) {
     Serial.println("Không thể lấy thời gian từ NTP Server");
     return;
@@ -194,23 +195,10 @@ void automaticfeeding (){
   // In ra thời gian hiện tại
   Serial.println(&timeinfo, "Thời gian hiện tại: %H:%M:%S");
   // Kiểm tra xem có đúng thời gian điều khiển servo không
-  if (timeinfo.tm_hour == targetHour && timeinfo.tm_min == targetMinute )
-   {
-    // Điều khiển servo (ví dụ: xoay đến góc 90 độ)
+  if (timeinfo.tm_hour == targetHour && timeinfo.tm_min == targetMinute) {
     Serial.println("Đúng giờ! Điều khiển servo đến góc 90 độ.");
     myServo.write(90);
-   }
-}
-
-String ratefood (){
-  float distanceOrigin = 8.0;
-  float foodAvailable = (1.0- (distance/distanceOrigin))*100.0;
-  Serial.println(" distance ");
-  Serial.println(distance );
-  Serial.println(" foodAvailable ");
-  Serial.println(foodAvailable);
-  
-  return String(foodAvailable);
+  }
 }
 
 void updateStatusDisplay() {
@@ -232,8 +220,7 @@ void updateStatusDisplay() {
     client.publish(topic3, ultrasonicDistance.c_str());
   }
 
-  if (currentMillis - lastfeeding >= autofeedinginterval) 
-  {
+  if (currentMillis - lastfeeding >= autofeedinginterval) {
     lastfeeding = currentMillis;
     automaticfeeding();
   }
