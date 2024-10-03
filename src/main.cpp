@@ -247,7 +247,7 @@ void updateStatusDisplay() {
     client.publish(topic0, String(temperature).c_str());
     client.publish(topic1, String(humidity).c_str());
     client.publish(topic2, String(airQuality).c_str());
-    client.publish(topic3, rate.c_str());
+    client.publish(topic3, (rate.c_str() + "%");
   }
 
   if (currentMillis - lastfeeding >= autofeedinginterval) 
