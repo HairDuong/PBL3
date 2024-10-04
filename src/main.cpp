@@ -11,8 +11,8 @@ const long  gmtOffset_sec = 7 * 3600;   // GMT+7
 const int   daylightOffset_sec = 0;
 
 // Thời gian để điều khiển servo (giả sử điều khiển lúc 12:00:00)
-int targetHour = 12;
-int targetMinute = 00;
+int targetHour = 13;
+int targetMinute = 43;
 int targetSecond = 0;
 
 //servo
@@ -37,6 +37,8 @@ long duration;
 #define FAN_RELAY_PIN  27  
 bool isFanOn = false;  
 int lastFanButtonState = HIGH;  
+bool Fanstates = 0;
+portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
 
 // May bơm
 #define PUMP_BUTTON_PIN 4
@@ -218,7 +220,6 @@ void handlePumpControl() {
   lastPumpButtonState = PumpButtonState;
 }
 
-
 String ratefood (){
   float distanceOrigin = 8.0;
   float foodAvailable = (1.0- (distance/distanceOrigin))*100.0;
@@ -241,13 +242,14 @@ void updateStatusDisplay() {
     humidity = dht.readHumidity();
     airQuality = analogRead(MQ135_PIN);
     String ultrasonicDistance = readUltrasonicSensor();
-    String rate = ratefood();
+    String rate = (ratefood()+"%");
+    
 
     // Gửi dữ liệu cảm biến lên MQTT
     client.publish(topic0, String(temperature).c_str());
     client.publish(topic1, String(humidity).c_str());
     client.publish(topic2, String(airQuality).c_str());
-    client.publish(topic3, (rate.c_str() + "%");
+    client.publish(topic3, rate.c_str());
   }
 
   if (currentMillis - lastfeeding >= autofeedinginterval) 
@@ -282,8 +284,6 @@ void updateStatusDisplay() {
 
   display.display();
 }
-
-
 
 void loop() {
   handleFanControl();
