@@ -32,8 +32,9 @@ const int mqtt_port = 1883;
 #define ECHO_PIN 18
 #define FAN_BUTTON_PIN 23
 #define FAN_RELAY_PIN 27
-#define PUMP_BUTTON_PIN 4
+#define PUMP_BUTTON_PIN 12
 #define PUMP_RELAY_PIN 25
+#define MODE_BUTTON_PIN 4 
 
 // Global variables
 float temperature = 0.0;
@@ -50,11 +51,16 @@ unsigned long autofeedinginterval = 6 * 1000;
 int targetHour = 13;
 int targetMinute = 43;
 int targetSecond = 0;
+unsigned long lastModeButtonPress = 0; 
+unsigned long lastFanButtonPress = 0;  
+const unsigned long debounceTime = 200;
 
 WiFiClient espClient;
 PubSubClient client(espClient);
 Servo myServo;
 DHT dht(DHTPIN, DHTTYPE);
+enum ControlMode { MANUAL, AUTOMATIC };
+ControlMode currentMode = MANUAL;
 
 // OLED Display 
 Adafruit_SH1106G display = Adafruit_SH1106G(128, 64, &Wire, -1);
@@ -79,7 +85,6 @@ void callback(char *topic, byte *payload, unsigned int length) {
     digitalWrite(PUMP_RELAY_PIN, isPumpOn ? HIGH : LOW);
   }
 }
-
 void automaticfeeding() {
   struct tm timeinfo;
   if (!getLocalTime(&timeinfo)) {
@@ -92,7 +97,6 @@ void automaticfeeding() {
     myServo.write(90);
   }
 }
-
 void setup() {
   Serial.begin(115200);
 
@@ -118,7 +122,9 @@ void setup() {
 
   pinMode(PUMP_BUTTON_PIN, INPUT_PULLUP); 
   pinMode(PUMP_RELAY_PIN, OUTPUT);        
-  digitalWrite(PUMP_RELAY_PIN, LOW);      
+  digitalWrite(PUMP_RELAY_PIN, LOW); 
+
+  pinMode(MODE_BUTTON_PIN, INPUT_PULLUP);     
 
   WiFi.begin(ssid, password);
   while (WiFi.status() != WL_CONNECTED) {
@@ -141,7 +147,6 @@ void setup() {
   client.subscribe(topic4);
   client.subscribe(topic5);
 }
-
 String readUltrasonicSensor() {
   digitalWrite(TRIG_PIN, LOW);
   delayMicroseconds(2);
@@ -153,23 +158,28 @@ String readUltrasonicSensor() {
   distance = (duration * 0.034) / 2;
   return String(distance);
 }
-
 void handleFanControl() {
-  int FanButtonState = digitalRead(FAN_BUTTON_PIN);
-  if (FanButtonState == LOW && lastFanButtonState == HIGH) {
-    delay(50);
-    if (digitalRead(FAN_BUTTON_PIN) == LOW) {
-      isFanOn = !isFanOn;
-      digitalWrite(FAN_RELAY_PIN, isFanOn ? HIGH : LOW);
-      Serial.println(isFanOn ? "Fan ON" : "Fan OFF");
-      
-      // Gửi trạng thái quạt lên MQTT
-      client.publish(topic4, isFanOn ? "ON" : "OFF");
-    }
-  }
-  lastFanButtonState = FanButtonState;
-}
+  unsigned long currentMillis = millis();
+  updateStatusDisplay();
 
+    switch (currentMode) {
+        case MANUAL:
+            digitalWrite(FAN_RELAY_PIN, isFanOn ? HIGH : LOW);
+            break;
+        case AUTOMATIC:
+            isFanOn = (temperature > 32.0); // Bật quạt nếu nhiệt độ > 32 độ C
+            digitalWrite(FAN_RELAY_PIN, isFanOn ? HIGH : LOW);
+            break;
+    }
+ if (digitalRead(MODE_BUTTON_PIN) == LOW && (currentMillis - lastModeButtonPress > debounceTime)) {
+    currentMode = (currentMode == MANUAL) ? AUTOMATIC : MANUAL; // Toggle mode
+    lastModeButtonPress = currentMillis; // Update last press time
+  }
+ if (currentMode == MANUAL && digitalRead(FAN_BUTTON_PIN) == LOW && (currentMillis - lastFanButtonPress > debounceTime)) {
+    isFanOn = !isFanOn; // Toggle fan state
+    lastFanButtonPress = currentMillis; // Update last press time
+  }
+}
 void handlePumpControl() {
   int PumpButtonState = digitalRead(PUMP_BUTTON_PIN);
   if (PumpButtonState == LOW && lastPumpButtonState == HIGH) {
@@ -178,23 +188,19 @@ void handlePumpControl() {
       isPumpOn = !isPumpOn;
       digitalWrite(PUMP_RELAY_PIN, isPumpOn ? HIGH : LOW);
       Serial.println(isPumpOn ? "Pump ON" : "Pump OFF");
-      
-      // Gửi trạng thái máy bơm lên MQTT
-      client.publish(topic5, isPumpOn ? "ON" : "OFF");
+    
     }
   }
   lastPumpButtonState = PumpButtonState;
 }
-
 String ratefood (){
   float distanceOrigin = 8.0;
   float foodAvailable = (1.0- (distance/distanceOrigin))*100.0;
   return String(foodAvailable);
 }
-
 void updateStatusDisplay() {
   unsigned long currentMillis = millis();
-  if (currentMillis - previousSensorMillis >= updateSensorInterval) {
+  if (currentMillis - previousSensorMillis >= updateSensorInterval)   {
     previousSensorMillis = currentMillis;
     temperature = dht.readTemperature();
     humidity = dht.readHumidity();
@@ -206,6 +212,8 @@ void updateStatusDisplay() {
     client.publish(topic1, String(humidity).c_str());
     client.publish(topic2, String(airQuality).c_str());
     client.publish(topic3, rate.c_str());
+    client.publish(topic4, isFanOn ? "ON" : "OFF");
+    client.publish(topic5, isPumpOn ? "ON" : "OFF");
   }
 
   if (currentMillis - lastfeeding >= autofeedinginterval) 
@@ -233,12 +241,12 @@ void updateStatusDisplay() {
   } else {
     display.println("Device Status:");
     display.println(isFanOn ? "Fan: ON" : "Fan: OFF");
+    display.println(currentMode ? "Mode: AUTOMATIC " : "Mode: MANUAL");
     display.println(isPumpOn ? "Pump: ON" : "Pump: OFF");
   }
 
   display.display();
-}
-
+} 
 void loop() {
   handleFanControl();
   handlePumpControl();
