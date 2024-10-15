@@ -6,45 +6,55 @@
 #include<ESP32Servo.h>
 #include <time.h>
 
-// Cấu hình NTP
-const long  gmtOffset_sec = 7 * 3600;   // GMT+7
-const int   daylightOffset_sec = 0;
+// Configuration
+const long gmtOffset_sec = 7 * 3600;   // GMT+7
+const int daylightOffset_sec = 0;
 
-// Thời gian để điều khiển servo (giả sử điều khiển lúc 12:00:00)
+const char *ssid = "Hoang11";
+const char *password = "1234567890";
+const char *mqtt_broker = "broker.emqx.io";
+const char *topic0 = "esp32/temp";
+const char *topic1 = "esp32/hum";
+const char *topic2 = "esp32/air";
+const char *topic3 = "esp32/foodrate";
+const char *topic4 = "esp32/quat/control";
+const char *topic5 = "esp32/maybom/control";
+const char *mqtt_username = "hoangpham1";
+const char *mqtt_password = "123456";
+const int mqtt_port = 1883;
+
+// Pin definitions
+#define servoPin 17
+#define DHTPIN 5
+#define DHTTYPE DHT11
+#define MQ135_PIN 34
+#define TRIG_PIN 19
+#define ECHO_PIN 18
+#define FAN_BUTTON_PIN 23
+#define FAN_RELAY_PIN 27
+#define PUMP_BUTTON_PIN 4
+#define PUMP_RELAY_PIN 25
+
+// Global variables
+float temperature = 0.0;
+float humidity = 0.0;
+int airQuality = 0;
+float distance = 0.0;
+long duration;
+bool isFanOn = false;
+int lastFanButtonState = HIGH; 
+bool isPumpOn = false;
+int lastPumpButtonState = HIGH;  
+unsigned long lastfeeding = 0;
+unsigned long autofeedinginterval = 6 * 1000; 
 int targetHour = 13;
 int targetMinute = 43;
 int targetSecond = 0;
 
-//servo
-#define servoPin 17
+WiFiClient espClient;
+PubSubClient client(espClient);
 Servo myServo;
-
-// Nhiet do và do am
-#define DHTPIN 5
-#define DHTTYPE DHT11
 DHT dht(DHTPIN, DHTTYPE);
-
-// MQ135
-#define MQ135_PIN 34
-
-// Sieu am
-#define TRIG_PIN 19
-#define ECHO_PIN 18
-long duration;
-
-// Quat
-#define FAN_BUTTON_PIN 23  
-#define FAN_RELAY_PIN  27  
-bool isFanOn = false;  
-int lastFanButtonState = HIGH;  
-bool Fanstates = 0;
-portMUX_TYPE mux = portMUX_INITIALIZER_UNLOCKED;
-
-// May bơm
-#define PUMP_BUTTON_PIN 4
-#define PUMP_RELAY_PIN 25
-bool isPumpOn = false;  
-int lastPumpButtonState = HIGH;  
 
 // OLED Display 
 Adafruit_SH1106G display = Adafruit_SH1106G(128, 64, &Wire, -1);
@@ -53,33 +63,6 @@ unsigned long previousDisplayMillis = 0;
 const unsigned long updateSensorInterval = 2000; 
 const unsigned long displayInterval = 5000; 
 bool showSensorData = true; 
-
-// WiFi và MQTT
-const char *ssid = "Hoang11"; 
-const char *password = "1234567890"; 
-const char *mqtt_broker = "broker.emqx.io";
-const char *topic0 = "esp32/temp";
-const char *topic1 = "esp32/hum";
-const char *topic2 = "esp32/air";
-const char *topic3 = "esp32/ultrasonic";
-const char *topic4 = "esp32/quat/control";
-const char *topic5 = "esp32/maybom/control";
-const char *mqtt_username = "hoangpham1";
-const char *mqtt_password = "123456";
-const int mqtt_port = 1883;
-
-WiFiClient espClient;
-PubSubClient client(espClient);
-
-// Biến toàn cục cho dữ liệu cảm biến
-float temperature = 0.0;
-float humidity = 0.0;
-int airQuality = 0;
-float distance = 0.0;
-
-// variable timer of automaticfeeding
-unsigned long lastfeeding=0;
-unsigned long autofeedinginterval= 6*1000; // 1p lay thoi gian 1 lan
 
 void callback(char *topic, byte *payload, unsigned int length) {
   String message;
@@ -97,23 +80,17 @@ void callback(char *topic, byte *payload, unsigned int length) {
   }
 }
 
-void automaticfeeding (){
+void automaticfeeding() {
   struct tm timeinfo;
-  // Lấy thời gian thực
-   
   if (!getLocalTime(&timeinfo)) {
     Serial.println("Không thể lấy thời gian từ NTP Server");
     return;
   }
-  // In ra thời gian hiện tại
   Serial.println(&timeinfo, "Thời gian hiện tại: %H:%M:%S");
-  // Kiểm tra xem có đúng thời gian điều khiển servo không
-  if (timeinfo.tm_hour == targetHour && timeinfo.tm_min == targetMinute )
-   {
-    // Điều khiển servo (ví dụ: xoay đến góc 90 độ)
+  if (timeinfo.tm_hour == targetHour && timeinfo.tm_min == targetMinute) {
     Serial.println("Đúng giờ! Điều khiển servo đến góc 90 độ.");
     myServo.write(90);
-   }
+  }
 }
 
 void setup() {
@@ -123,25 +100,16 @@ void setup() {
   pinMode(ECHO_PIN, INPUT_PULLDOWN);
   dht.begin();
 
-  // Gắn chân servo vào đối tượng servo
   myServo.attach(servoPin);
-  // Cấu hình NTP
   configTime(gmtOffset_sec, daylightOffset_sec, "pool.ntp.org", "time.nist.gov");
-
-  // Khởi tạo Servo
-  myServo.attach(servoPin);
-
-  // Đặt vị trí ban đầu cho servo
   myServo.write(0);
-  // the first update time
   automaticfeeding();
 
   if (!display.begin(0x3C, true)) {
-    Serial.println("OLED initialization failed");
-    while (1);
+  Serial.println("OLED initialization failed");
+  while (1);
   }
   display.display();
-  delay(100);
   display.clearDisplay();
 
   pinMode(FAN_BUTTON_PIN, INPUT_PULLUP); 
@@ -181,9 +149,7 @@ String readUltrasonicSensor() {
   delayMicroseconds(10);
   digitalWrite(TRIG_PIN, LOW);
   duration = pulseIn(ECHO_PIN, HIGH, 30000UL);
-
   if (duration == 0) return "Error";
-
   distance = (duration * 0.034) / 2;
   return String(distance);
 }
@@ -223,29 +189,19 @@ void handlePumpControl() {
 String ratefood (){
   float distanceOrigin = 8.0;
   float foodAvailable = (1.0- (distance/distanceOrigin))*100.0;
-  Serial.println(" distance ");
-  Serial.println(distance );
-  Serial.println(" foodAvailable ");
-  Serial.println(foodAvailable);
-  
   return String(foodAvailable);
 }
 
 void updateStatusDisplay() {
   unsigned long currentMillis = millis();
-  
-  // Cập nhật dữ liệu cảm biến mỗi 2 giây
   if (currentMillis - previousSensorMillis >= updateSensorInterval) {
     previousSensorMillis = currentMillis;
-    
     temperature = dht.readTemperature();
     humidity = dht.readHumidity();
     airQuality = analogRead(MQ135_PIN);
     String ultrasonicDistance = readUltrasonicSensor();
-    String rate = (ratefood()+"%");
+    String rate = ratefood();
     
-
-    // Gửi dữ liệu cảm biến lên MQTT
     client.publish(topic0, String(temperature).c_str());
     client.publish(topic1, String(humidity).c_str());
     client.publish(topic2, String(airQuality).c_str());
@@ -258,13 +214,11 @@ void updateStatusDisplay() {
     automaticfeeding();
   }
 
-  // Đổi trạng thái hiển thị mỗi 5 giây
   if (currentMillis - previousDisplayMillis >= displayInterval) {
     previousDisplayMillis = currentMillis;
     showSensorData = !showSensorData; // Đảo trạng thái hiển thị
   }
 
-  // Cập nhật hiển thị trên OLED
   display.clearDisplay();
   display.setTextSize(1);
   display.setTextColor(SH110X_WHITE);
@@ -275,7 +229,7 @@ void updateStatusDisplay() {
     display.println("Temp: " + String(temperature) + " C");
     display.println("Humidity: " + String(humidity) + " %");
     display.println("Air Quality: " + String(airQuality));
-    display.println("Distance: " + readUltrasonicSensor() + " cm");
+    display.println("Food: " + ratefood() + " %");
   } else {
     display.println("Device Status:");
     display.println(isFanOn ? "Fan: ON" : "Fan: OFF");
