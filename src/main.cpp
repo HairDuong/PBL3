@@ -1,3 +1,4 @@
+
 #include <WiFi.h>
 #include <PubSubClient.h>
 #include <Wire.h>
@@ -20,6 +21,7 @@ const char *topic3 = "esp32/foodrate";
 const char *topic4 = "esp32/quat/control";
 const char *topic5 = "esp32/maybom/control";
 const char *topic6 = "esp32/fan/mode";
+const char *topic7 = "esp32/servo/control";
 const char *mqtt_username = "hoangpham1";
 const char *mqtt_password = "123456";
 const int mqtt_port = 1883;
@@ -48,10 +50,11 @@ int lastFanButtonState = HIGH;
 bool isPumpOn = false;
 int lastPumpButtonState = HIGH;  
 unsigned long lastfeeding = 0;
-unsigned long autofeedinginterval = 6 * 1000; 
+unsigned long autofeedinginterval = 1000; 
 int targetHour = 13;
 int targetMinute = 43;
 int targetSecond = 0;
+int targetSecondclose =0;
 unsigned long lastModeButtonPress = 0; 
 unsigned long lastFanButtonPress = 0;  
 const unsigned long debounceTime = 50;
@@ -86,19 +89,49 @@ void callback(char *topic, byte *payload, unsigned int length) {
     isPumpOn = message == "ON";
     digitalWrite(PUMP_RELAY_PIN, isPumpOn ? HIGH : LOW);
   }
+  if (String(topic) == topic7)
+  {
+    if (message== "ON")
+    { myServo.write(90);}
+    if (message == "OFF")
+    { myServo.write(0);}
+    
+  }
 }
 
-void automaticfeeding() {
+void automaticfeeding() 
+{
   struct tm timeinfo;
+  // Lấy thời gian thực
   if (!getLocalTime(&timeinfo)) {
     Serial.println("Không thể lấy thời gian từ NTP Server");
     return;
   }
+
+  // In ra thời gian hiện tại
   Serial.println(&timeinfo, "Thời gian hiện tại: %H:%M:%S");
-  if (timeinfo.tm_hour == targetHour && timeinfo.tm_min == targetMinute) {
-    Serial.println("Đúng giờ! Điều khiển servo đến góc 90 độ.");
-    myServo.write(90);
+
+  // Kiểm tra xem có đúng thời gian điều khiển servo không
+  if (timeinfo.tm_hour == targetHour && timeinfo.tm_min == targetMinute && timeinfo.tm_sec == targetSecond) 
+  {
+    
+
+    // Nếu servo chưa ở góc 90 và chưa ghi nhận thời điểm xoay
+    if (myServo.read() != 90) 
+    {
+      Serial.println("Đúng giờ! Điều khiển servo đến góc 90 độ.");
+      myServo.write(90);
+      
+    }
   }
+    // Kiểm tra nếu đã đủ 10 giây  kể từ khi servo xoay đến góc 90 độ
+     if (timeinfo.tm_hour == targetHour && timeinfo.tm_min == targetMinute && timeinfo.tm_sec == (targetSecondclose)) {
+     {
+      Serial.println("Servo đã ở góc 90 độ trong 10 giây. Quay lại góc 0 độ.");
+      myServo.write(0);  // Xoay servo về góc 0 độ
+      
+     }
+}
 }
 
 void setup() {
