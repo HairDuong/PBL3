@@ -183,6 +183,7 @@ void setup() {
   }
   client.subscribe(topic4);
   client.subscribe(topic5);
+  client.subcribe(topic7);
 }
 
 String readUltrasonicSensor() {
