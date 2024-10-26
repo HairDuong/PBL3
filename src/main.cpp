@@ -11,8 +11,8 @@ const long gmtOffset_sec = 7 * 3600;
 const int daylightOffset_sec = 0;
 
 // Wi-Fi and MQTT settings
-const char *ssid = "Eduy";
-const char *password = "11111111";
+const char *ssid = "Hoang11";
+const char *password = "123456789000";
 const char *mqtt_broker = "broker.emqx.io";
 const char *topic0 = "esp32/temp";
 const char *topic1 = "esp32/hum";
@@ -23,6 +23,7 @@ const char *topic5 = "esp32/maybom/control";
 const char *topic6 = "esp32/fan/mode";
 const char *topic7 = "esp32/servo/control";
 const char *topic8 = "esp32/bongden/control";
+const char *topic9 = "esp32/maybom2/control";
 const char *mqtt_username = "hoangpham1";
 const char *mqtt_password = "123456";
 const int mqtt_port = 1883;
@@ -38,6 +39,8 @@ const int mqtt_port = 1883;
 #define FAN_RELAY_PIN 27
 #define PUMP_BUTTON_PIN 4
 #define PUMP_RELAY_PIN 25
+#define PUMP2_BUTTON_PIN 16
+#define PUMP2_RELAY_PIN 32
 #define MODE_BUTTON_PIN 12
 #define BULB_RELAY_PIN 33
 #define BULB_BUTTON_PIN 15
@@ -53,6 +56,8 @@ bool isFanOn = false;
 int lastFanButtonState = HIGH; 
 bool isPumpOn = false;
 int lastPumpButtonState = HIGH;
+bool isPump2On = false;
+int lastPump2ButtonState = HIGH;
 bool isBulbOn = false;
 int lastBulbButtonState = HIGH; 
 unsigned long lastfeeding = 0;
@@ -90,9 +95,11 @@ void callback(char *topic, byte *payload, unsigned int length) {
   if (String(topic) == topic5) isPumpOn = (message == "ON");
   if (String(topic) == topic7) myServo.write(message == "ON" ? 90 : 0);
   if (String(topic) == topic8) isBulbOn = (message == "ON");
+  if (String(topic) == topic9) isPump2On = (message == "ON");
 
   digitalWrite(FAN_RELAY_PIN, isFanOn ? HIGH : LOW);
   digitalWrite(PUMP_RELAY_PIN, isPumpOn ? HIGH : LOW);
+  digitalWrite(PUMP2_RELAY_PIN, isPump2On ? HIGH : LOW);
   digitalWrite(BULB_RELAY_PIN, isBulbOn ? HIGH : LOW);
 }
 void automaticfeeding() {
@@ -112,7 +119,7 @@ void automaticfeeding() {
      if (timeinfo.tm_hour == targetHour && timeinfo.tm_min == targetMinute && timeinfo.tm_sec == (targetSecondclose)) {
      {
       Serial.println("Servo đã ở góc 90 độ trong 10 giây. Quay lại góc 0 độ.");
-      myServo.write(0);  // Xoay servo về góc 0 độ
+      myServo.write(0);  
      }
   }
 }
@@ -139,7 +146,15 @@ void setup() {
 
   pinMode(PUMP_BUTTON_PIN, INPUT_PULLUP); 
   pinMode(PUMP_RELAY_PIN, OUTPUT);        
-  digitalWrite(PUMP_RELAY_PIN, LOW);    
+  digitalWrite(PUMP_RELAY_PIN, LOW);   
+
+  pinMode(PUMP2_BUTTON_PIN, INPUT_PULLUP); 
+  pinMode(PUMP2_RELAY_PIN, OUTPUT);        
+  digitalWrite(PUMP2_RELAY_PIN, LOW); 
+
+  pinMode(BULB_BUTTON_PIN, INPUT_PULLUP); 
+  pinMode(BULB_RELAY_PIN, OUTPUT);        
+  digitalWrite(BULB_RELAY_PIN, LOW);   
 
   pinMode(MODE_BUTTON_PIN, INPUT_PULLUP);  
 
@@ -164,6 +179,7 @@ void setup() {
   client.subscribe(topic5);
   client.subscribe(topic7);
   client.subscribe(topic8);
+  client.subscribe(topic9);
 }
 String readUltrasonicSensor() {
   digitalWrite(TRIG_PIN, LOW);
@@ -194,35 +210,26 @@ void handleServoControl() {
 }
 void publishDeviceStatus() {
     unsigned long currentMillis = millis();
-
-    // Kiểm tra nếu đã qua khoảng thời gian cần để cập nhật dữ liệu cảm biến lên MQTT
     if (currentMillis - previousSensorMillis >= updateSensorInterval) {
         previousSensorMillis = currentMillis;
-
-        // Đọc dữ liệu từ các cảm biến
         temperature = dht.readTemperature();
         humidity = dht.readHumidity();
         airQuality = analogRead(MQ135_PIN);
         String ultrasonicDistance = readUltrasonicSensor();
         String rate = ratefood();
         
-        // Gửi dữ liệu cảm biến lên các topic MQTT
         client.publish(topic0, String(temperature).c_str());
         client.publish(topic1, String(humidity).c_str());
         client.publish(topic2, String(airQuality).c_str());
         client.publish(topic3, rate.c_str());
-
-        Serial.println("Air Quality: " + String(airQuality));  
-
-        // Gửi trạng thái của các thiết bị lên MQTT
         client.publish(topic4, isFanOn ? "ON" : "OFF");
         client.publish(topic5, isPumpOn ? "ON" : "OFF");
         client.publish(topic6, currentMode == MANUAL ? "Manual" : "Automatic");
         client.publish(topic7, isServoAt90 ? "ON" : "OFF");
         client.publish(topic8, isBulbOn ? "ON" : "OFF");
+        client.publish(topic9, isPump2On ? "ON" : "OFF");
     }
 }
-
 void handleFanControl() {
   switch (currentMode) {
     case MANUAL: {
@@ -266,11 +273,20 @@ void handlePumpControl() {
     if (digitalRead(PUMP_BUTTON_PIN) == LOW) {
       isPumpOn = !isPumpOn;
       digitalWrite(PUMP_RELAY_PIN, isPumpOn ? HIGH : LOW);
-
-      client.publish(topic5, isPumpOn ? "ON" : "OFF");
     }
   }
   lastPumpButtonState = PumpButtonState;
+}
+void handlePump2Control() {
+  int Pump2ButtonState = digitalRead(PUMP2_BUTTON_PIN);
+  if (Pump2ButtonState == LOW && lastPump2ButtonState == HIGH) {
+    delay(50);
+    if (digitalRead(PUMP2_BUTTON_PIN) == LOW) {
+      isPump2On = !isPump2On;
+      digitalWrite(PUMP2_RELAY_PIN, isPump2On ? HIGH : LOW);
+    }
+  }
+  lastPump2ButtonState = Pump2ButtonState;
 }
 void handleBulbControl() {
   int BulbButtonState = digitalRead(BULB_BUTTON_PIN);
@@ -279,7 +295,6 @@ void handleBulbControl() {
     if (digitalRead(BULB_BUTTON_PIN) == LOW) {
       isBulbOn = !isBulbOn;
       digitalWrite(BULB_RELAY_PIN, isBulbOn ? HIGH : LOW);
-      client.publish(topic8, isBulbOn ? "ON" : "OFF");
     }
   }
   lastBulbButtonState = BulbButtonState;
@@ -290,49 +305,43 @@ String ratefood (){
   return String(foodAvailable);
 }
 void updateStatusDisplay() {
-    automaticfeeding();  // Cập nhật trạng thái tự động cho cơ chế cho ăn
+    automaticfeeding(); 
     char timeStringBuff[10];
-    strftime(timeStringBuff, sizeof(timeStringBuff), "%H:%M:%S", &timeinfo); // Lấy thời gian hiện tại
-
+    strftime(timeStringBuff, sizeof(timeStringBuff), "%H:%M:%S", &timeinfo); 
     unsigned long currentMillis = millis();
 
-    // Luân phiên hiển thị giữa dữ liệu cảm biến và trạng thái thiết bị sau mỗi 5 giây
     if (currentMillis - previousDisplayMillis >= displayInterval) {
         previousDisplayMillis = currentMillis;
-        showSensorData = !showSensorData;  // Chuyển đổi cờ hiển thị
+        showSensorData = !showSensorData;  
     }
-
-    // Xóa màn hình OLED trước khi hiển thị nội dung mới
     display.clearDisplay();
     display.setTextSize(1);
     display.setTextColor(SH110X_WHITE);
     display.setCursor(0, 0);
-
-    // Hiển thị dữ liệu cảm biến
     if (showSensorData) {
-        display.println("Time: " + String(timeStringBuff));  // Hiển thị thời gian hiện tại
-        display.println("Sensor Data:");                    // Tiêu đề cho phần dữ liệu cảm biến
-        display.println("Temp: " + String(temperature) + " C");  // Nhiệt độ
-        display.println("Humidity: " + String(humidity) + " %"); // Độ ẩm
-        display.println("Air Quality: " + String(airQuality));   // Chất lượng không khí
-        display.println("Food: " + ratefood() + " %");           // Mức thức ăn còn lại
+        display.println("Time: " + String(timeStringBuff));  
+        display.println("Sensor Data:");                   
+        display.println("Temp: " + String(temperature) + " C");  
+        display.println("Humidity: " + String(humidity) + " %"); 
+        display.println("Air Quality: " + String(airQuality));  
+        display.println("Food: " + ratefood() + " %");           
     } 
-    // Hiển thị trạng thái thiết bị
     else {
-        display.println("Device Status:");                       // Tiêu đề cho phần trạng thái thiết bị
-        display.println(isFanOn ? "Fan: ON" : "Fan: OFF");       // Trạng thái quạt
-        display.println(currentMode == AUTOMATIC ? "Fan mode: AUTOMATIC" : "Fan mode: MANUAL");  // Chế độ quạt
-        display.println(isPumpOn ? "Pump: ON" : "Pump: OFF");    // Trạng thái máy bơm
-        display.println(isBulbOn ? "Bulb: ON" : "Bulb: OFF");    // Trạng thái bóng đèn
-        display.println(isServoAt90 ? "Servo: ON" : "Servo: OFF");  // Trạng thái servo
+        display.println("Device Status:");                       
+        display.println(isFanOn ? "Fan: ON" : "Fan: OFF");       
+        display.println(currentMode == AUTOMATIC ? "Fan mode: AUTOMATIC" : "Fan mode: MANUAL"); 
+        display.println(isPumpOn ? "Pump: ON" : "Pump: OFF");    
+        display.println(isPump2On ? "Pump2: ON" : "Pump2: OFF");    
+        display.println(isBulbOn ? "Bulb: ON" : "Bulb: OFF");    
+        display.println(isServoAt90 ? "Servo: ON" : "Servo: OFF"); 
     }
-
-    display.display();  // Cập nhật màn hình OLED với nội dung mới
+    display.display();  
 }
-
 void loop() {
   handleFanControl();
   handlePumpControl();
+  handlePump2Control();
+  handleBulbControl();
   handleServoControl();
   updateStatusDisplay();
   publishDeviceStatus();
