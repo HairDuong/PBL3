@@ -5,14 +5,17 @@
 #include <DHT.h>
 #include<ESP32Servo.h>
 #include <time.h>
+#include <PCF8574.h>
+
+PCF8574 pcf8574(0x20); 
 
 // Configuration for NTP Time
 const long gmtOffset_sec = 7 * 3600;   
 const int daylightOffset_sec = 0;
 
 // Wi-Fi and MQTT settings
-const char *ssid = "Hoang11";
-const char *password = "123456789000";
+const char *ssid = "CAFE DU BIEN";
+const char *password = "dubien123";
 const char *mqtt_broker = "broker.emqx.io";
 const char *topic0 = "esp32/temp";
 const char *topic1 = "esp32/hum";
@@ -24,6 +27,9 @@ const char *topic6 = "esp32/fan/mode";
 const char *topic7 = "esp32/servo/control";
 const char *topic8 = "esp32/bongden/control";
 const char *topic9 = "esp32/maybom2/control";
+const char *topic10 = "targetHour";
+const char *topic11 = "targetMinute";
+const char *topic12 = "targetSecond";
 const char *mqtt_username = "hoangpham1";
 const char *mqtt_password = "123456";
 const int mqtt_port = 1883;
@@ -35,16 +41,17 @@ const int mqtt_port = 1883;
 #define MQ135_PIN 34
 #define TRIG_PIN 19
 #define ECHO_PIN 18
-#define FAN_BUTTON_PIN 23
+#define FAN_BUTTON_PIN 0
 #define FAN_RELAY_PIN 27
-#define PUMP_BUTTON_PIN 4
+#define PUMP_BUTTON_PIN 1
 #define PUMP_RELAY_PIN 25
-#define PUMP2_BUTTON_PIN 16
+#define PUMP2_BUTTON_PIN 2
 #define PUMP2_RELAY_PIN 32
-#define MODE_BUTTON_PIN 12
+#define MODE_BUTTON_PIN 5
 #define BULB_RELAY_PIN 33
 #define BULB_BUTTON_PIN 15
-#define SERVO_BUTTON_PIN 14  
+#define SERVO_BUTTON_PIN 4 
+#define OLED_BUTTON_PIN 6 
 
 // Global variables
 float temperature = 0.0;
@@ -53,13 +60,14 @@ int airQuality = 0;
 float distance = 0.0;
 long duration;
 bool isFanOn = false;
-int lastFanButtonState = HIGH; 
+bool lastFanButtonState = HIGH; 
 bool isPumpOn = false;
-int lastPumpButtonState = HIGH;
+bool lastPumpButtonState = HIGH;
 bool isPump2On = false;
-int lastPump2ButtonState = HIGH;
+bool lastPump2ButtonState = HIGH;
 bool isBulbOn = false;
-int lastBulbButtonState = HIGH; 
+bool lastBulbButtonState = HIGH; 
+bool lastOledButtonState = HIGH;
 unsigned long lastfeeding = 0;
 unsigned long autofeedinginterval = 1000;
 int targetHour = 13;
@@ -72,6 +80,15 @@ bool isServoAt90 = false;
 int lastServoButtonState = HIGH;  
 struct tm timeinfo;
 
+unsigned long previousMillisPump = 0; 
+unsigned long previousMillisPump2 = 0;
+unsigned long previousMillisServo = 0;
+unsigned long previousMillisFan = 0;
+unsigned long previousMillisBulb = 0;
+unsigned long previousMillisMode = 0;
+unsigned long previousMillisOled = 0;
+const long debounceInterval = 50;  
+
 
 WiFiClient espClient;
 PubSubClient client(espClient);
@@ -83,9 +100,7 @@ ControlMode currentMode = MANUAL;
 // OLED Display 
 Adafruit_SH1106G display = Adafruit_SH1106G(128, 64, &Wire, -1);
 unsigned long previousSensorMillis = 0; 
-unsigned long previousDisplayMillis = 0; 
 const unsigned long updateSensorInterval = 2000; 
-const unsigned long displayInterval = 5000; 
 bool showSensorData = true;
 void callback(char *topic, byte *payload, unsigned int length) {
   String message;
@@ -96,6 +111,11 @@ void callback(char *topic, byte *payload, unsigned int length) {
   if (String(topic) == topic7) myServo.write(message == "ON" ? 90 : 0);
   if (String(topic) == topic8) isBulbOn = (message == "ON");
   if (String(topic) == topic9) isPump2On = (message == "ON");
+  if (String(topic) == topic10) targetHour = message.toInt() ;
+  if (String(topic) == topic11) targetMinute = message.toInt() ;
+  if (String(topic) == topic12) 
+  {targetSecond = message.toInt() ;
+   targetSecondclose = targetSecond +10;}
 
   digitalWrite(FAN_RELAY_PIN, isFanOn ? HIGH : LOW);
   digitalWrite(PUMP_RELAY_PIN, isPumpOn ? HIGH : LOW);
@@ -125,10 +145,11 @@ void automaticfeeding() {
 }
 void setup() {
   Serial.begin(9600);
+  Wire.begin();
+  pcf8574.begin();
   pinMode(TRIG_PIN, OUTPUT);
   pinMode(ECHO_PIN, INPUT_PULLDOWN);
   dht.begin();
-  pinMode(SERVO_BUTTON_PIN, INPUT_PULLUP); 
   myServo.attach(servoPin);
   configTime(gmtOffset_sec, daylightOffset_sec, "pool.ntp.org", "time.nist.gov");
   myServo.write(0);
@@ -140,23 +161,14 @@ void setup() {
   display.display();
   display.clearDisplay();
 
-  pinMode(FAN_BUTTON_PIN, INPUT_PULLUP); 
   pinMode(FAN_RELAY_PIN, OUTPUT);        
   digitalWrite(FAN_RELAY_PIN, LOW);      
-
-  pinMode(PUMP_BUTTON_PIN, INPUT_PULLUP); 
   pinMode(PUMP_RELAY_PIN, OUTPUT);        
   digitalWrite(PUMP_RELAY_PIN, LOW);   
-
-  pinMode(PUMP2_BUTTON_PIN, INPUT_PULLUP); 
   pinMode(PUMP2_RELAY_PIN, OUTPUT);        
   digitalWrite(PUMP2_RELAY_PIN, LOW); 
-
-  pinMode(BULB_BUTTON_PIN, INPUT_PULLUP); 
   pinMode(BULB_RELAY_PIN, OUTPUT);        
   digitalWrite(BULB_RELAY_PIN, LOW);   
-
-  pinMode(MODE_BUTTON_PIN, INPUT_PULLUP);  
 
   WiFi.begin(ssid, password);
   while (WiFi.status() != WL_CONNECTED) {
@@ -180,6 +192,9 @@ void setup() {
   client.subscribe(topic7);
   client.subscribe(topic8);
   client.subscribe(topic9);
+  client.subscribe(topic10);
+  client.subscribe(topic11);
+  client.subscribe(topic12);
 }
 String readUltrasonicSensor() {
   digitalWrite(TRIG_PIN, LOW);
@@ -193,21 +208,28 @@ String readUltrasonicSensor() {
   return String(distance);
 }
 void handleServoControl() {
-  int currentServoButtonState = digitalRead(SERVO_BUTTON_PIN); 
-  if (currentServoButtonState == LOW && lastServoButtonState == HIGH) {
-    delay(50);
-    if (digitalRead(SERVO_BUTTON_PIN) == LOW) { 
-      isServoAt90 = !isServoAt90;
-      if (isServoAt90) {
-        myServo.write(90);  
-      } else {
-        myServo.write(0);   
-      }
-      client.publish(topic7, isServoAt90 ? "ON" : "OFF");
+  unsigned long currentMillis = millis();  // Get current time
+
+  int currentServoButtonState = pcf8574.read(4); 
+  if (currentServoButtonState == LOW && lastServoButtonState == HIGH && (currentMillis - previousMillisServo >= debounceInterval)) {
+    previousMillisServo = currentMillis;
+    isServoAt90 = !isServoAt90;
+    if (isServoAt90) {
+      myServo.write(90);  
+    } else {
+      myServo.write(0);   
     }
+    client.publish(topic7, isServoAt90 ? "ON" : "OFF");
   }
   lastServoButtonState = currentServoButtonState;
 }
+
+String ratefood (){
+  float distanceOrigin = 8.0;
+  float foodAvailable = (1.0- (distance/distanceOrigin))*100.0;
+  return String(foodAvailable);
+}
+
 void publishDeviceStatus() {
     unsigned long currentMillis = millis();
     if (currentMillis - previousSensorMillis >= updateSensorInterval) {
@@ -231,16 +253,16 @@ void publishDeviceStatus() {
     }
 }
 void handleFanControl() {
+  unsigned long currentMillis = millis();  // Get current time
+
   switch (currentMode) {
     case MANUAL: {
-      int fanButtonState = digitalRead(FAN_BUTTON_PIN); 
-      if (fanButtonState == LOW && lastFanButtonState == HIGH) {
-        delay(50); 
-        if (digitalRead(FAN_BUTTON_PIN) == LOW) {
-          isFanOn = !isFanOn;  
-          digitalWrite(FAN_RELAY_PIN, isFanOn ? HIGH : LOW);  
-          publishDeviceStatus();
-        }
+      int fanButtonState = pcf8574.read(0); 
+      if (fanButtonState == LOW && lastFanButtonState == HIGH && (currentMillis - previousMillisFan >= debounceInterval)) {
+        previousMillisFan = currentMillis;
+        isFanOn = !isFanOn;  
+        digitalWrite(FAN_RELAY_PIN, isFanOn ? HIGH : LOW);  
+        publishDeviceStatus();
       }
       lastFanButtonState = fanButtonState; 
       break;
@@ -256,64 +278,65 @@ void handleFanControl() {
       break;
     }
   }
-  int modeButtonState = digitalRead(MODE_BUTTON_PIN); 
-  if (modeButtonState == LOW && lastModeButtonState == HIGH) {
-    delay(50);  
-    if (digitalRead(MODE_BUTTON_PIN) == LOW) {
-      currentMode = (currentMode == MANUAL) ? AUTOMATIC : MANUAL; 
-      publishDeviceStatus();
-    }
+
+  int modeButtonState = pcf8574.read(5); 
+  if (modeButtonState == LOW && lastModeButtonState == HIGH && (currentMillis - previousMillisMode >= debounceInterval)) {
+    previousMillisMode = currentMillis;
+    currentMode = (currentMode == MANUAL) ? AUTOMATIC : MANUAL; 
+    publishDeviceStatus();
   }
   lastModeButtonState = modeButtonState; 
 }
 void handlePumpControl() {
-  int PumpButtonState = digitalRead(PUMP_BUTTON_PIN);
-  if (PumpButtonState == LOW && lastPumpButtonState == HIGH) {
-    delay(50);
-    if (digitalRead(PUMP_BUTTON_PIN) == LOW) {
-      isPumpOn = !isPumpOn;
-      digitalWrite(PUMP_RELAY_PIN, isPumpOn ? HIGH : LOW);
-    }
+  unsigned long currentMillis = millis();  // Lấy thời gian hiện tại
+
+  bool PumpButtonState = pcf8574.read(1);  
+  if (PumpButtonState == LOW && lastPumpButtonState == HIGH && (currentMillis - previousMillisPump >= debounceInterval)) {
+    previousMillisPump = currentMillis;
+    isPumpOn = !isPumpOn;  
+    digitalWrite(PUMP_RELAY_PIN, isPumpOn ? HIGH : LOW);  
   }
-  lastPumpButtonState = PumpButtonState;
+
+  lastPumpButtonState = PumpButtonState;  
 }
 void handlePump2Control() {
-  int Pump2ButtonState = digitalRead(PUMP2_BUTTON_PIN);
-  if (Pump2ButtonState == LOW && lastPump2ButtonState == HIGH) {
-    delay(50);
-    if (digitalRead(PUMP2_BUTTON_PIN) == LOW) {
-      isPump2On = !isPump2On;
-      digitalWrite(PUMP2_RELAY_PIN, isPump2On ? HIGH : LOW);
-    }
+  unsigned long currentMillis = millis();  // Get current time
+
+  int Pump2ButtonState = pcf8574.read(2);
+  if (Pump2ButtonState == LOW && lastPump2ButtonState == HIGH && (currentMillis - previousMillisPump2 >= debounceInterval)) {
+    previousMillisPump2 = currentMillis;
+    isPump2On = !isPump2On;
+    digitalWrite(PUMP2_RELAY_PIN, isPump2On ? HIGH : LOW);
   }
+
   lastPump2ButtonState = Pump2ButtonState;
 }
 void handleBulbControl() {
-  int BulbButtonState = digitalRead(BULB_BUTTON_PIN);
-  if (BulbButtonState == LOW && lastBulbButtonState == HIGH) {
-    delay(50);
-    if (digitalRead(BULB_BUTTON_PIN) == LOW) {
-      isBulbOn = !isBulbOn;
-      digitalWrite(BULB_RELAY_PIN, isBulbOn ? HIGH : LOW);
-    }
+  unsigned long currentMillis = millis();  // Get current time
+
+  int BulbButtonState = pcf8574.read(3);
+  if (BulbButtonState == LOW && lastBulbButtonState == HIGH && (currentMillis - previousMillisBulb >= debounceInterval)) {
+    previousMillisBulb = currentMillis;
+    isBulbOn = !isBulbOn;
+    digitalWrite(BULB_RELAY_PIN, isBulbOn ? HIGH : LOW);
   }
+
   lastBulbButtonState = BulbButtonState;
 }
-String ratefood (){
-  float distanceOrigin = 8.0;
-  float foodAvailable = (1.0- (distance/distanceOrigin))*100.0;
-  return String(foodAvailable);
-}
+
 void updateStatusDisplay() {
     automaticfeeding(); 
     char timeStringBuff[10];
     strftime(timeStringBuff, sizeof(timeStringBuff), "%H:%M:%S", &timeinfo); 
     unsigned long currentMillis = millis();
-
-    if (currentMillis - previousDisplayMillis >= displayInterval) {
-        previousDisplayMillis = currentMillis;
+    
+    int OledButtonState = pcf8574.read(6);
+    if (OledButtonState == LOW && lastOledButtonState == HIGH && (currentMillis - previousMillisOled >= debounceInterval)) {
+        previousMillisOled = currentMillis;
         showSensorData = !showSensorData;  
     }
+    lastOledButtonState = OledButtonState;
+
     display.clearDisplay();
     display.setTextSize(1);
     display.setTextColor(SH110X_WHITE);
@@ -345,5 +368,6 @@ void loop() {
   handleServoControl();
   updateStatusDisplay();
   publishDeviceStatus();
+  Serial.print(targetSecondclose);
   client.loop();
 }
