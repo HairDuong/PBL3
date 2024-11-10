@@ -244,6 +244,7 @@ void setup() {
   }
   client.subscribe(topic4);
   client.subscribe(topic5);
+  client.subscribe(topic6);
   client.subscribe(topic7);
   client.subscribe(topic8);
   client.subscribe(topic9);
@@ -273,7 +274,7 @@ void readSensors() {
     }
 }
 void handleServoControl() {
-  unsigned long currentMillis = millis();  // Get current time
+  unsigned long currentMillis = millis(); 
 
   int currentServoButtonState = pcf8574.read(4); 
   if (currentServoButtonState == LOW && lastServoButtonState == HIGH && (currentMillis - previousMillisServo >= debounceInterval)) {
@@ -289,7 +290,7 @@ void handleServoControl() {
   lastServoButtonState = currentServoButtonState;
 }
 void handleFanControl() {
-  unsigned long currentMillis = millis();  // Get current time
+  unsigned long currentMillis = millis();  
 
   switch (currentMode) {
     case MANUAL: {
@@ -324,7 +325,7 @@ void handleFanControl() {
   lastModeButtonState = modeButtonState; 
 }
 void handlePumpControl() {
-  unsigned long currentMillis = millis();  // Lấy thời gian hiện tại
+  unsigned long currentMillis = millis();  
 
   bool PumpButtonState = pcf8574.read(1);  
   if (PumpButtonState == LOW && lastPumpButtonState == HIGH && (currentMillis - previousMillisPump >= debounceInterval)) {
@@ -336,19 +337,43 @@ void handlePumpControl() {
   lastPumpButtonState = PumpButtonState;  
 }
 void handlePump2Control() {
-  unsigned long currentMillis = millis();  // Get current time
+  unsigned long currentMillis = millis();  
 
-  int Pump2ButtonState = pcf8574.read(2);
-  if (Pump2ButtonState == LOW && lastPump2ButtonState == HIGH && (currentMillis - previousMillisPump2 >= debounceInterval)) {
-    previousMillisPump2 = currentMillis;
-    isPump2On = !isPump2On;
-    digitalWrite(PUMP2_RELAY_PIN, isPump2On ? HIGH : LOW);
+  switch (currentMode) {
+    case MANUAL: {
+      int Pump2ButtonState = pcf8574.read(2); 
+      if (Pump2ButtonState == LOW && lastPump2ButtonState == HIGH && (currentMillis - previousMillisPump2 >= debounceInterval)) {
+        previousMillisPump2 = currentMillis;
+        isPump2On = !isPump2On;  
+        digitalWrite(PUMP2_RELAY_PIN, isPump2On ? HIGH : LOW);  
+        publishDeviceStatus();  
+      }
+      lastPump2ButtonState = Pump2ButtonState;
+      break;
+    }
+
+    case AUTOMATIC: {
+      if (airQuality > 900) {
+        isPump2On = true;  
+      } else {
+        isPump2On = false; 
+      }
+      digitalWrite(PUMP2_RELAY_PIN, isPump2On ? HIGH : LOW);  
+      publishDeviceStatus();  
+      break;
+    }
   }
 
-  lastPump2ButtonState = Pump2ButtonState;
+  int modeButtonState = pcf8574.read(5); 
+  if (modeButtonState == LOW && lastModeButtonState == HIGH && (currentMillis - previousMillisMode >= debounceInterval)) {
+    previousMillisMode = currentMillis;
+    currentMode = (currentMode == MANUAL) ? AUTOMATIC : MANUAL;  
+    publishDeviceStatus();  
+  }
+  lastModeButtonState = modeButtonState; 
 }
 void handleBulbControl() {
-  unsigned long currentMillis = millis();  // Get current time
+  unsigned long currentMillis = millis();  
 
   int BulbButtonState = pcf8574.read(3);
   if (BulbButtonState == LOW && lastBulbButtonState == HIGH && (currentMillis - previousMillisBulb >= debounceInterval)) {
