@@ -14,8 +14,8 @@ const long gmtOffset_sec = 7 * 3600;
 const int daylightOffset_sec = 0;
 
 // Wi-Fi and MQTT settings
-const char *ssid = "CAFE DU BIEN";
-const char *password = "dubien123";
+const char *ssid = "Hoang11";
+const char *password = "123456789000";
 const char *mqtt_broker = "broker.emqx.io";
 const char *topic0 = "esp32/temp";
 const char *topic1 = "esp32/hum";
@@ -27,9 +27,6 @@ const char *topic6 = "esp32/fan/mode";
 const char *topic7 = "esp32/servo/control";
 const char *topic8 = "esp32/bongden/control";
 const char *topic9 = "esp32/maybom2/control";
-const char *topic10 = "targetHour";
-const char *topic11 = "targetMinute";
-const char *topic12 = "targetSecond";
 const char *mqtt_username = "hoangpham1";
 const char *mqtt_password = "123456";
 const int mqtt_port = 1883;
@@ -59,6 +56,7 @@ float humidity = 0.0;
 int airQuality = 0;
 float distance = 0.0;
 long duration;
+int rate = 0.0;
 bool isFanOn = false;
 bool lastFanButtonState = HIGH; 
 bool isPumpOn = false;
@@ -88,7 +86,8 @@ unsigned long previousMillisBulb = 0;
 unsigned long previousMillisMode = 0;
 unsigned long previousMillisOled = 0;
 const long debounceInterval = 50;  
-
+unsigned long previousMillis = 0;
+const long interval = 5000;
 
 WiFiClient espClient;
 PubSubClient client(espClient);
@@ -111,11 +110,6 @@ void callback(char *topic, byte *payload, unsigned int length) {
   if (String(topic) == topic7) myServo.write(message == "ON" ? 90 : 0);
   if (String(topic) == topic8) isBulbOn = (message == "ON");
   if (String(topic) == topic9) isPump2On = (message == "ON");
-  if (String(topic) == topic10) targetHour = message.toInt() ;
-  if (String(topic) == topic11) targetMinute = message.toInt() ;
-  if (String(topic) == topic12) 
-  {targetSecond = message.toInt() ;
-   targetSecondclose = targetSecond +10;}
 
   digitalWrite(FAN_RELAY_PIN, isFanOn ? HIGH : LOW);
   digitalWrite(PUMP_RELAY_PIN, isPumpOn ? HIGH : LOW);
@@ -192,9 +186,31 @@ void setup() {
   client.subscribe(topic7);
   client.subscribe(topic8);
   client.subscribe(topic9);
-  client.subscribe(topic10);
-  client.subscribe(topic11);
-  client.subscribe(topic12);
+}
+void readSensors() {
+  unsigned long currentMillis = millis();
+    if (currentMillis - previousSensorMillis >= updateSensorInterval) {
+        previousSensorMillis = currentMillis;
+        temperature = dht.readTemperature();
+        humidity = dht.readHumidity();
+        airQuality = analogRead(MQ135_PIN);
+        String ultrasonicDistance = readUltrasonicSensor();
+        String rate = ratefood();
+    }
+}
+void publishDeviceStatus() { 
+  readSensors();
+  client.publish(topic0, String(temperature).c_str());
+  client.publish(topic1, String(humidity).c_str());
+  client.publish(topic2, String(airQuality).c_str());
+  client.publish(topic3, String(rate).c_str());
+  client.publish(topic4, isFanOn ? "ON" : "OFF");
+  client.publish(topic5, isPumpOn ? "ON" : "OFF");
+  client.publish(topic6, currentMode == MANUAL ? "Manual" : "Automatic");
+  client.publish(topic7, isServoAt90 ? "ON" : "OFF");
+  client.publish(topic8, isBulbOn ? "ON" : "OFF");
+  client.publish(topic9, isPump2On ? "ON" : "OFF");
+    
 }
 String readUltrasonicSensor() {
   digitalWrite(TRIG_PIN, LOW);
@@ -222,35 +238,6 @@ void handleServoControl() {
     client.publish(topic7, isServoAt90 ? "ON" : "OFF");
   }
   lastServoButtonState = currentServoButtonState;
-}
-
-String ratefood (){
-  float distanceOrigin = 8.0;
-  float foodAvailable = (1.0- (distance/distanceOrigin))*100.0;
-  return String(foodAvailable);
-}
-
-void publishDeviceStatus() {
-    unsigned long currentMillis = millis();
-    if (currentMillis - previousSensorMillis >= updateSensorInterval) {
-        previousSensorMillis = currentMillis;
-        temperature = dht.readTemperature();
-        humidity = dht.readHumidity();
-        airQuality = analogRead(MQ135_PIN);
-        String ultrasonicDistance = readUltrasonicSensor();
-        String rate = ratefood();
-        
-        client.publish(topic0, String(temperature).c_str());
-        client.publish(topic1, String(humidity).c_str());
-        client.publish(topic2, String(airQuality).c_str());
-        client.publish(topic3, rate.c_str());
-        client.publish(topic4, isFanOn ? "ON" : "OFF");
-        client.publish(topic5, isPumpOn ? "ON" : "OFF");
-        client.publish(topic6, currentMode == MANUAL ? "Manual" : "Automatic");
-        client.publish(topic7, isServoAt90 ? "ON" : "OFF");
-        client.publish(topic8, isBulbOn ? "ON" : "OFF");
-        client.publish(topic9, isPump2On ? "ON" : "OFF");
-    }
 }
 void handleFanControl() {
   unsigned long currentMillis = millis();  // Get current time
@@ -323,7 +310,11 @@ void handleBulbControl() {
 
   lastBulbButtonState = BulbButtonState;
 }
-
+String ratefood (){
+  float distanceOrigin = 8.0;
+  float foodAvailable = (1.0- (distance/distanceOrigin))*100.0;
+  return String(foodAvailable);
+}
 void updateStatusDisplay() {
     automaticfeeding(); 
     char timeStringBuff[10];
@@ -361,13 +352,16 @@ void updateStatusDisplay() {
     display.display();  
 }
 void loop() {
+  readSensors();
   handleFanControl();
   handlePumpControl();
   handlePump2Control();
   handleBulbControl();
   handleServoControl();
   updateStatusDisplay();
+  if (WiFi.status() == WL_CONNECTED) {
   publishDeviceStatus();
-  Serial.print(targetSecondclose);
   client.loop();
+  }
+  
 }
