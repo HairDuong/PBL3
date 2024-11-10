@@ -35,7 +35,7 @@ const int mqtt_port = 1883;
 #define servoPin 17
 #define DHTPIN 5
 #define DHTTYPE DHT11
-#define MQ135_PIN 13
+#define MQ135_PIN 34
 #define TRIG_PIN 19
 #define ECHO_PIN 18
 #define FAN_BUTTON_PIN 0
@@ -49,15 +49,15 @@ const int mqtt_port = 1883;
 #define BULB_BUTTON_PIN 15
 #define SERVO_BUTTON_PIN 4 
 #define OLED_BUTTON_PIN 6 
-#define E_SENSOR_1 34
-#define E_SENSOR_2 35
-#define E_SENSOR_3 36
-#define E_SENSOR_4 39
-#define SENSITIVITY 0.185
-#define ADC_RESOLUTION 4095.0
-#define ADC_VOLTAGE 3.3
-#define SAMPLING_COUNT 1000
-#define NO_CURRENT_THRESHOLD 0.1 
+#define E_SENSOR_1 35  
+#define E_SENSOR_2 34
+#define E_SENSOR_3 39
+#define E_SENSOR_4 36
+#define SENSITIVITY 0.185  
+#define ADC_RESOLUTION 4095.0  
+#define ADC_VOLTAGE 3.3 
+#define SAMPLING_COUNT 1000  
+#define NO_CURRENT_THRESHOLD 0.1  
 
 // Global variables
 float temperature = 0.0;
@@ -86,10 +86,7 @@ int lastModeButtonState = HIGH;
 bool isServoAt90 = false;  
 int lastServoButtonState = HIGH;  
 struct tm timeinfo;
-float zeroPointVoltage1 = 2.5;
-float zeroPointVoltage2 = 2.5;
-float zeroPointVoltage3 = 2.5;
-float zeroPointVoltage4 = 2.5;
+int currentScreen = 0;
 
 unsigned long previousMillisPump = 0; 
 unsigned long previousMillisPump2 = 0;
@@ -101,6 +98,14 @@ unsigned long previousMillisOled = 0;
 const long debounceInterval = 50;  
 unsigned long previousMillis = 0;
 const long interval = 5000;
+float zeroPointVoltage1 = 2.5;  
+float voltage1, current1, totalCurrent1 = 0;
+float zeroPointVoltage2 = 2.5;  
+float voltage2, current2, totalCurrent2 = 0;
+float zeroPointVoltage3 = 2.5;  
+float voltage3, current3, totalCurrent3 = 0;
+float zeroPointVoltage4 = 2.5;  
+float voltage4, current4, totalCurrent4 = 0;  
 
 WiFiClient espClient;
 PubSubClient client(espClient);
@@ -114,7 +119,6 @@ Adafruit_SH1106G display = Adafruit_SH1106G(128, 64, &Wire, -1);
 unsigned long previousSensorMillis = 0; 
 const unsigned long updateSensorInterval = 2000; 
 bool showSensorData = true;
-
 void callback(char *topic, byte *payload, unsigned int length) {
   String message;
   for (int i = 0; i < length; i++) message += (char)payload[i];
@@ -151,16 +155,8 @@ void automaticfeeding() {
      }
   }
 }
-float readZeroPointVoltage(int pin) {
-  float voltage = 0;
-  for (int i = 0; i < SAMPLING_COUNT; i++) {
-    voltage += analogRead(pin) * (ADC_VOLTAGE / ADC_RESOLUTION);
-    delay(1);
-  }
-  return voltage / SAMPLING_COUNT;
-}
 void setup() {
-  Serial.begin(115200);
+  Serial.begin(9600);
   Wire.begin();
   pcf8574.begin();
   pinMode(TRIG_PIN, OUTPUT);
@@ -185,27 +181,37 @@ void setup() {
   digitalWrite(PUMP2_RELAY_PIN, LOW); 
   pinMode(BULB_RELAY_PIN, OUTPUT);        
   digitalWrite(BULB_RELAY_PIN, LOW);   
-  
-  pinMode(E_SENSOR_1, INPUT);
-  pinMode(E_SENSOR_2, INPUT);
-  pinMode(E_SENSOR_3, INPUT);
-  pinMode(E_SENSOR_4, INPUT);
 
-  zeroPointVoltage1 = readZeroPointVoltage(E_SENSOR_1);
-  Serial.print("Điện áp zero point cảm biến 1: ");
+  pinMode(E_SENSOR_1, INPUT); 
+  pinMode(E_SENSOR_2, INPUT); 
+  pinMode(E_SENSOR_3, INPUT); 
+  pinMode(E_SENSOR_4, INPUT);  
+
+  for (int i = 0; i < SAMPLING_COUNT; i++) {
+    voltage1 += analogRead(E_SENSOR_1) * (ADC_VOLTAGE / ADC_RESOLUTION); 
+  }
+  voltage1 /= SAMPLING_COUNT;
+  zeroPointVoltage1 = voltage1;  
+  Serial.print("Điện áp zero point 1 đo được: ");
   Serial.println(zeroPointVoltage1, 3);
 
-  zeroPointVoltage2 = readZeroPointVoltage(E_SENSOR_2);
-  Serial.print("Điện áp zero point cảm biến 2: ");
-  Serial.println(zeroPointVoltage2, 3);
+  for (int i = 0; i < SAMPLING_COUNT; i++) {
+    voltage2 += analogRead(E_SENSOR_2) * (ADC_VOLTAGE / ADC_RESOLUTION); 
+  }
+  voltage2 /= SAMPLING_COUNT;
+  zeroPointVoltage2 = voltage2;  
 
-  zeroPointVoltage3 = readZeroPointVoltage(E_SENSOR_3);
-  Serial.print("Điện áp zero point cảm biến 3: ");
-  Serial.println(zeroPointVoltage3, 3);
+  for (int i = 0; i < SAMPLING_COUNT; i++) {
+    voltage3 += analogRead(E_SENSOR_3) * (ADC_VOLTAGE / ADC_RESOLUTION); 
+  }
+  voltage3 /= SAMPLING_COUNT;
+  zeroPointVoltage3 = voltage3;  
 
-  zeroPointVoltage4 = readZeroPointVoltage(E_SENSOR_4);
-  Serial.print("Điện áp zero point cảm biến 4: ");
-  Serial.println(zeroPointVoltage4, 3);
+  for (int i = 0; i < SAMPLING_COUNT; i++) {
+    voltage4 += analogRead(E_SENSOR_4) * (ADC_VOLTAGE / ADC_RESOLUTION);  
+  }
+  voltage4 /= SAMPLING_COUNT;
+  zeroPointVoltage4 = voltage4;  
 
   WiFi.begin(ssid, password);
   while (WiFi.status() != WL_CONNECTED) {
@@ -353,35 +359,72 @@ void handleBulbControl() {
 
   lastBulbButtonState = BulbButtonState;
 }
+void testquat(){
+ for (int i = 0; i < SAMPLING_COUNT; i++) {
+    int analogValue1 = analogRead(E_SENSOR_1);
+    voltage1 = analogValue1 * (ADC_VOLTAGE / ADC_RESOLUTION);
+    current1 = (voltage1 - zeroPointVoltage1) / SENSITIVITY;
+    totalCurrent1 += current1;
+    delay(1);
+  }
+  totalCurrent1 /= SAMPLING_COUNT;
+  
+  if (totalCurrent1 < 0) {
+    totalCurrent1 = 0;
+  } 
+}
+void testmaybom(){
+ for (int i = 0; i < SAMPLING_COUNT; i++) {
+    int analogValue2 = analogRead(E_SENSOR_2);
+    voltage2 = analogValue2 * (ADC_VOLTAGE / ADC_RESOLUTION);
+    current2 = (voltage2 - zeroPointVoltage2) / SENSITIVITY;
+    totalCurrent2 += current2;
+    delay(1);
+  }
+  totalCurrent2 /= SAMPLING_COUNT;
+  
+  if (totalCurrent2 < 0) {
+    totalCurrent2 = 0;
+  } 
+}
+void testmaybom2(){
+ for (int i = 0; i < SAMPLING_COUNT; i++) {
+    int analogValue3 = analogRead(E_SENSOR_3);
+    voltage3 = analogValue3 * (ADC_VOLTAGE / ADC_RESOLUTION);
+    current3 = (voltage3 - zeroPointVoltage3) / SENSITIVITY;
+    totalCurrent3 += current3;
+    delay(1);
+  }
+  totalCurrent3 /= SAMPLING_COUNT;
+  
+  if (totalCurrent3 < 0) {
+    totalCurrent3 = 0;
+  }  
+}
+void testden(){
+ for (int i = 0; i < SAMPLING_COUNT; i++) {
+    int analogValue4 = analogRead(E_SENSOR_4);
+    voltage4 = analogValue4 * (ADC_VOLTAGE / ADC_RESOLUTION);
+    current4 = (voltage4 - zeroPointVoltage4) / SENSITIVITY;
+    totalCurrent4 += current4;
+    delay(1);
+  }
+  totalCurrent4 /= SAMPLING_COUNT;
+  
+  if (totalCurrent4 < 0) {
+    totalCurrent4 = 0;
+  }  
+}
 String ratefood (){
   float distanceOrigin = 8.0;
   float foodAvailable = (1.0- (distance/distanceOrigin))*100.0;
   return String(foodAvailable);
 }
-void calculateAndDisplayCurrent(int pin, float zeroPointVoltage, int sensorNumber) {
-  float totalCurrent = 0;
-
-  for (int i = 0; i < SAMPLING_COUNT; i++) {
-    float voltage = analogRead(pin) * (ADC_VOLTAGE / ADC_RESOLUTION);
-    float current = (voltage - zeroPointVoltage) / SENSITIVITY;
-    totalCurrent += (current < 0) ? 0 : current;
-    delay(1);
-  }
-  totalCurrent /= SAMPLING_COUNT;
-
-  if (totalCurrent < NO_CURRENT_THRESHOLD) {
-    Serial.print("Cảm biến ");
-    Serial.print(sensorNumber);
-    Serial.print(": Mạch không hoạt động: Dòng điện = ");
-  } else {
-    Serial.print("Cảm biến ");
-    Serial.print(sensorNumber);
-    Serial.print(": Mạch hoạt động: Dòng điện = ");
-  }
-  Serial.print(totalCurrent, 2);
-  Serial.println(" A");
-}
 void updateStatusDisplay() {
+    testquat();
+    testmaybom();
+    testmaybom2();
+    testden();
     automaticfeeding(); 
     char timeStringBuff[10];
     strftime(timeStringBuff, sizeof(timeStringBuff), "%H:%M:%S", &timeinfo); 
@@ -390,7 +433,7 @@ void updateStatusDisplay() {
     int OledButtonState = pcf8574.read(6);
     if (OledButtonState == LOW && lastOledButtonState == HIGH && (currentMillis - previousMillisOled >= debounceInterval)) {
         previousMillisOled = currentMillis;
-        showSensorData = !showSensorData;  
+        currentScreen = (currentScreen + 1) % 3;  
     }
     lastOledButtonState = OledButtonState;
 
@@ -398,40 +441,60 @@ void updateStatusDisplay() {
     display.setTextSize(1);
     display.setTextColor(SH110X_WHITE);
     display.setCursor(0, 0);
-    if (showSensorData) {
-        display.println("Time: " + String(timeStringBuff));  
-        display.println("Sensor Data:");                   
-        display.println("Temp: " + String(temperature) + " C");  
-        display.println("Humidity: " + String(humidity) + " %"); 
-        display.println("Air Quality: " + String(airQuality));  
-        display.println("Food: " + ratefood() + " %");           
-    } 
-    else {
-        display.println("Device Status:");                       
-        display.println(isFanOn ? "Fan: ON" : "Fan: OFF");       
-        display.println(currentMode == AUTOMATIC ? "Fan mode: AUTOMATIC" : "Fan mode: MANUAL"); 
-        display.println(isPumpOn ? "Pump: ON" : "Pump: OFF");    
-        display.println(isPump2On ? "Pump2: ON" : "Pump2: OFF");    
-        display.println(isBulbOn ? "Bulb: ON" : "Bulb: OFF");    
-        display.println(isServoAt90 ? "Servo: ON" : "Servo: OFF"); 
+    
+    switch (currentScreen) {
+        case 0: 
+            display.println("Time: " + String(timeStringBuff));  
+            display.println("Sensor Data:");                   
+            display.println("Temp: " + String(temperature) + " C");  
+            display.println("Humidity: " + String(humidity) + " %");  
+            display.println("Air Quality: " + String(airQuality));  
+            display.println("Food Rate: " + String(rate) + "%");
+            break;
+
+        case 1: 
+            display.println("Device Status:");                       
+            display.println(isFanOn ? "Fan: ON" : "Fan: OFF");       
+            display.println(currentMode == AUTOMATIC ? "Fan mode: AUTOMATIC" : "Fan mode: MANUAL"); 
+            display.println(isPumpOn ? "Pump: ON" : "Pump: OFF");    
+            display.println(isPump2On ? "Pump2: ON" : "Pump2: OFF");    
+            display.println(isBulbOn ? "Bulb: ON" : "Bulb: OFF");    
+            display.println(isServoAt90 ? "Servo: ON" : "Servo: OFF"); 
+            break;
+
+        case 2:  
+            if (totalCurrent1 < NO_CURRENT_THRESHOLD && 
+                totalCurrent2 < NO_CURRENT_THRESHOLD && 
+                totalCurrent3 < NO_CURRENT_THRESHOLD && 
+                totalCurrent4 < NO_CURRENT_THRESHOLD) {
+            display.println("Fan active: " + String(totalCurrent1, 2) + " A");
+            display.println("Pump active: " + String(totalCurrent1, 2) + " A");
+            display.println("Pump2 active: " + String(totalCurrent1, 2) + " A");
+            display.println("Bulb active: " + String(totalCurrent1, 2) + " A");
+           } else
+            {
+            display.println("Fan unactive: " + String(totalCurrent1, 2) + " A");
+            display.println("Pump unactive: " + String(totalCurrent1, 2) + " A");
+            display.println("Pump2 unactive: " + String(totalCurrent1, 2) + " A");
+            display.println("Bulb unactive: " + String(totalCurrent1, 2) + " A");
+           } 
+            break;
+        default:
+            break;
     }
-    display.display();  
+    display.display();
 }
 void loop() {
-  unsigned long currentMillis = millis();
-  if (currentMillis - previousMillis >= updateSensorInterval) {
-    previousMillis = currentMillis;
-    calculateAndDisplayCurrent(E_SENSOR_1, zeroPointVoltage1, 1);
-    calculateAndDisplayCurrent(E_SENSOR_2, zeroPointVoltage2, 2);
-    calculateAndDisplayCurrent(E_SENSOR_3, zeroPointVoltage3, 3);
-    calculateAndDisplayCurrent(E_SENSOR_4, zeroPointVoltage4, 4);
-  }
   readSensors();
   handleFanControl();
   handlePumpControl();
   handlePump2Control();
   handleBulbControl();
   handleServoControl();
+  testquat();
+  testmaybom();
+  testmaybom2();
+  testden();
   updateStatusDisplay();
   if (WiFi.status() == WL_CONNECTED) {
   publishDeviceStatus();
