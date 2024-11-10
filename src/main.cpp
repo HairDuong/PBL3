@@ -35,7 +35,7 @@ const int mqtt_port = 1883;
 #define servoPin 17
 #define DHTPIN 5
 #define DHTTYPE DHT11
-#define MQ135_PIN 34
+#define MQ135_PIN 13
 #define TRIG_PIN 19
 #define ECHO_PIN 18
 #define FAN_BUTTON_PIN 0
@@ -49,6 +49,15 @@ const int mqtt_port = 1883;
 #define BULB_BUTTON_PIN 15
 #define SERVO_BUTTON_PIN 4 
 #define OLED_BUTTON_PIN 6 
+#define E_SENSOR_1 34
+#define E_SENSOR_2 35
+#define E_SENSOR_3 36
+#define E_SENSOR_4 39
+#define SENSITIVITY 0.185
+#define ADC_RESOLUTION 4095.0
+#define ADC_VOLTAGE 3.3
+#define SAMPLING_COUNT 1000
+#define NO_CURRENT_THRESHOLD 0.1 
 
 // Global variables
 float temperature = 0.0;
@@ -77,6 +86,10 @@ int lastModeButtonState = HIGH;
 bool isServoAt90 = false;  
 int lastServoButtonState = HIGH;  
 struct tm timeinfo;
+float zeroPointVoltage1 = 2.5;
+float zeroPointVoltage2 = 2.5;
+float zeroPointVoltage3 = 2.5;
+float zeroPointVoltage4 = 2.5;
 
 unsigned long previousMillisPump = 0; 
 unsigned long previousMillisPump2 = 0;
@@ -101,6 +114,7 @@ Adafruit_SH1106G display = Adafruit_SH1106G(128, 64, &Wire, -1);
 unsigned long previousSensorMillis = 0; 
 const unsigned long updateSensorInterval = 2000; 
 bool showSensorData = true;
+
 void callback(char *topic, byte *payload, unsigned int length) {
   String message;
   for (int i = 0; i < length; i++) message += (char)payload[i];
@@ -137,8 +151,16 @@ void automaticfeeding() {
      }
   }
 }
+float readZeroPointVoltage(int pin) {
+  float voltage = 0;
+  for (int i = 0; i < SAMPLING_COUNT; i++) {
+    voltage += analogRead(pin) * (ADC_VOLTAGE / ADC_RESOLUTION);
+    delay(1);
+  }
+  return voltage / SAMPLING_COUNT;
+}
 void setup() {
-  Serial.begin(9600);
+  Serial.begin(115200);
   Wire.begin();
   pcf8574.begin();
   pinMode(TRIG_PIN, OUTPUT);
@@ -163,6 +185,27 @@ void setup() {
   digitalWrite(PUMP2_RELAY_PIN, LOW); 
   pinMode(BULB_RELAY_PIN, OUTPUT);        
   digitalWrite(BULB_RELAY_PIN, LOW);   
+  
+  pinMode(E_SENSOR_1, INPUT);
+  pinMode(E_SENSOR_2, INPUT);
+  pinMode(E_SENSOR_3, INPUT);
+  pinMode(E_SENSOR_4, INPUT);
+
+  zeroPointVoltage1 = readZeroPointVoltage(E_SENSOR_1);
+  Serial.print("Điện áp zero point cảm biến 1: ");
+  Serial.println(zeroPointVoltage1, 3);
+
+  zeroPointVoltage2 = readZeroPointVoltage(E_SENSOR_2);
+  Serial.print("Điện áp zero point cảm biến 2: ");
+  Serial.println(zeroPointVoltage2, 3);
+
+  zeroPointVoltage3 = readZeroPointVoltage(E_SENSOR_3);
+  Serial.print("Điện áp zero point cảm biến 3: ");
+  Serial.println(zeroPointVoltage3, 3);
+
+  zeroPointVoltage4 = readZeroPointVoltage(E_SENSOR_4);
+  Serial.print("Điện áp zero point cảm biến 4: ");
+  Serial.println(zeroPointVoltage4, 3);
 
   WiFi.begin(ssid, password);
   while (WiFi.status() != WL_CONNECTED) {
@@ -315,6 +358,29 @@ String ratefood (){
   float foodAvailable = (1.0- (distance/distanceOrigin))*100.0;
   return String(foodAvailable);
 }
+void calculateAndDisplayCurrent(int pin, float zeroPointVoltage, int sensorNumber) {
+  float totalCurrent = 0;
+
+  for (int i = 0; i < SAMPLING_COUNT; i++) {
+    float voltage = analogRead(pin) * (ADC_VOLTAGE / ADC_RESOLUTION);
+    float current = (voltage - zeroPointVoltage) / SENSITIVITY;
+    totalCurrent += (current < 0) ? 0 : current;
+    delay(1);
+  }
+  totalCurrent /= SAMPLING_COUNT;
+
+  if (totalCurrent < NO_CURRENT_THRESHOLD) {
+    Serial.print("Cảm biến ");
+    Serial.print(sensorNumber);
+    Serial.print(": Mạch không hoạt động: Dòng điện = ");
+  } else {
+    Serial.print("Cảm biến ");
+    Serial.print(sensorNumber);
+    Serial.print(": Mạch hoạt động: Dòng điện = ");
+  }
+  Serial.print(totalCurrent, 2);
+  Serial.println(" A");
+}
 void updateStatusDisplay() {
     automaticfeeding(); 
     char timeStringBuff[10];
@@ -352,6 +418,14 @@ void updateStatusDisplay() {
     display.display();  
 }
 void loop() {
+  unsigned long currentMillis = millis();
+  if (currentMillis - previousMillis >= updateSensorInterval) {
+    previousMillis = currentMillis;
+    calculateAndDisplayCurrent(E_SENSOR_1, zeroPointVoltage1, 1);
+    calculateAndDisplayCurrent(E_SENSOR_2, zeroPointVoltage2, 2);
+    calculateAndDisplayCurrent(E_SENSOR_3, zeroPointVoltage3, 3);
+    calculateAndDisplayCurrent(E_SENSOR_4, zeroPointVoltage4, 4);
+  }
   readSensors();
   handleFanControl();
   handlePumpControl();
