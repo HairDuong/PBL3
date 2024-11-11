@@ -14,8 +14,8 @@ const long gmtOffset_sec = 7 * 3600;
 const int daylightOffset_sec = 0;
 
 // Wi-Fi and MQTT settings
-const char *ssid = "Hoang11";
-const char *password = "123456789000";
+const char *ssid = "Phong6A6B";
+const char *password = "0918784850";
 const char *mqtt_broker = "broker.emqx.io";
 const char *topic0 = "esp32/temp";
 const char *topic1 = "esp32/hum";
@@ -32,6 +32,9 @@ const char *topic11 = "esp32/pump/test";
 const char *topic12 = "esp32/pump2/test";
 const char *topic13 = "esp32/bulb/test";
 const char *topic14 = "esp32/waterrate";
+const char *topic15 = "targetHour";
+const char *topic16 = "targetMinute";
+const char *topic17 = "targetSecond";
 const char *mqtt_username = "hoangpham1";
 const char *mqtt_password = "123456";
 const int mqtt_port = 1883;
@@ -138,6 +141,11 @@ void callback(char *topic, byte *payload, unsigned int length) {
   if (String(topic) == topic7) myServo.write(message == "ON" ? 90 : 0);
   if (String(topic) == topic8) isBulbOn = (message == "ON");
   if (String(topic) == topic9) isPump2On = (message == "ON");
+  if (String(topic) == topic15) targetHour = message.toInt() ;
+  if (String(topic) == topic16) targetMinute = message.toInt() ;
+  if (String(topic) == topic17) 
+  {targetSecond = message.toInt() ;
+   targetSecondclose = targetSecond +10;}
   
   digitalWrite(FAN_RELAY_PIN, isFanOn ? HIGH : LOW);
   digitalWrite(PUMP_RELAY_PIN, isPumpOn ? HIGH : LOW);
@@ -248,6 +256,9 @@ void setup() {
   client.subscribe(topic7);
   client.subscribe(topic8);
   client.subscribe(topic9);
+  client.subscribe(topic15);
+  client.subscribe(topic16);
+  client.subscribe(topic17);
 }
 String readUltrasonicSensor(int trigPin, int echoPin) {
   digitalWrite(trigPin, LOW);
@@ -259,6 +270,15 @@ String readUltrasonicSensor(int trigPin, int echoPin) {
   if (duration == 0) return "Error";
   distance = (duration * 0.034) / 2;
   return String(distance);
+}
+
+String foodrate (){
+  float foodAvailable = (1.0- (distance/distanceOrigin))*100.0;
+  return String(foodAvailable);
+}
+String waterrate (){
+  float waterAvailable = (1.0- (distance/distanceOrigin))*100.0;
+  return String(waterAvailable);
 }
 void readSensors() {
   unsigned long currentMillis = millis();
@@ -273,6 +293,106 @@ void readSensors() {
         String rate2 = waterrate();
     }
 }
+
+
+void fantest(){
+ for (int i = 0; i < SAMPLING_COUNT; i++) {
+    int analogValue1 = analogRead(E_SENSOR_1);
+    voltage1 = analogValue1 * (ADC_VOLTAGE / ADC_RESOLUTION);
+    current1 = (voltage1 - zeroPointVoltage1) / SENSITIVITY;
+    totalCurrent1 += current1;
+    delay(1);
+  }
+  totalCurrent1 /= SAMPLING_COUNT;
+  
+  if (totalCurrent1 < 0) {
+    totalCurrent1 = 0;
+  } 
+}
+void pumptest(){
+ for (int i = 0; i < SAMPLING_COUNT; i++) {
+    int analogValue2 = analogRead(E_SENSOR_2);
+    voltage2 = analogValue2 * (ADC_VOLTAGE / ADC_RESOLUTION);
+    current2 = (voltage2 - zeroPointVoltage2) / SENSITIVITY;
+    totalCurrent2 += current2;
+    delay(1);
+  }
+  totalCurrent2 /= SAMPLING_COUNT;
+  
+  if (totalCurrent2 < 0) {
+    totalCurrent2 = 0;
+  } 
+}
+void pump2test(){
+ for (int i = 0; i < SAMPLING_COUNT; i++) {
+    int analogValue3 = analogRead(E_SENSOR_3);
+    voltage3 = analogValue3 * (ADC_VOLTAGE / ADC_RESOLUTION);
+    current3 = (voltage3 - zeroPointVoltage3) / SENSITIVITY;
+    totalCurrent3 += current3;
+    delay(1);
+  }
+  totalCurrent3 /= SAMPLING_COUNT;
+  
+  if (totalCurrent3 < 0) {
+    totalCurrent3 = 0;
+  }  
+}
+void bulbtest(){
+ for (int i = 0; i < SAMPLING_COUNT; i++) {
+    int analogValue4 = analogRead(E_SENSOR_4);
+    voltage4 = analogValue4 * (ADC_VOLTAGE / ADC_RESOLUTION);
+    current4 = (voltage4 - zeroPointVoltage4) / SENSITIVITY;
+    totalCurrent4 += current4;
+    delay(1);
+  }
+  totalCurrent4 /= SAMPLING_COUNT;
+  
+  if (totalCurrent4 < 0) {
+    totalCurrent4 = 0;
+  }  
+}
+
+void publishDeviceStatus() { 
+  fantest();
+  pumptest();
+  pump2test();
+  bulbtest();
+  readSensors();
+  String payload1 = "Fan active: " + String(totalCurrent1, 2) + " A";
+  String payload2 = "Pump active: " + String(totalCurrent1, 2) + " A";
+  String payload3 = "Pump2 active: " + String(totalCurrent1, 2) + " A";
+  String payload4 = "Bulb active: " + String(totalCurrent1, 2) + " A";
+  String payload5 = "Fan unactive: " + String(totalCurrent1, 2) + " A";
+  String payload6 = "Pump unactive: " + String(totalCurrent1, 2) + " A";
+  String payload7 = "Pump2 unactive: " + String(totalCurrent1, 2) + " A";
+  String payload8 = "Bulb unactive: " + String(totalCurrent1, 2) + " A";
+  client.publish(topic0, String(temperature).c_str());
+  client.publish(topic1, String(humidity).c_str());
+  client.publish(topic2, String(airQuality).c_str());
+  client.publish(topic3, String(rate1).c_str());
+  client.publish(topic4, isFanOn ? "ON" : "OFF");
+  client.publish(topic5, isPumpOn ? "ON" : "OFF");
+  client.publish(topic6, currentMode == MANUAL ? "Manual" : "Automatic");
+  client.publish(topic7, isServoAt90 ? "ON" : "OFF");
+  client.publish(topic8, isBulbOn ? "ON" : "OFF");
+  client.publish(topic9, isPump2On ? "ON" : "OFF");
+  if (totalCurrent1 < NO_CURRENT_THRESHOLD && 
+      totalCurrent2 < NO_CURRENT_THRESHOLD && 
+      totalCurrent3 < NO_CURRENT_THRESHOLD && 
+      totalCurrent4 < NO_CURRENT_THRESHOLD) {
+  client.publish(topic10,payload1.c_str());
+  client.publish(topic11,payload2.c_str());
+  client.publish(topic12,payload3.c_str());
+  client.publish(topic13,payload4.c_str());
+  } else {
+  client.publish(topic10,payload5.c_str());
+  client.publish(topic11,payload6.c_str());
+  client.publish(topic12,payload7.c_str());
+  client.publish(topic13,payload8.c_str());
+  }
+  client.publish(topic14, String(rate2).c_str());
+}
+
 void handleServoControl() {
   unsigned long currentMillis = millis(); 
 
@@ -384,110 +504,9 @@ void handleBulbControl() {
 
   lastBulbButtonState = BulbButtonState;
 }
-void fantest(){
- for (int i = 0; i < SAMPLING_COUNT; i++) {
-    int analogValue1 = analogRead(E_SENSOR_1);
-    voltage1 = analogValue1 * (ADC_VOLTAGE / ADC_RESOLUTION);
-    current1 = (voltage1 - zeroPointVoltage1) / SENSITIVITY;
-    totalCurrent1 += current1;
-    delay(1);
-  }
-  totalCurrent1 /= SAMPLING_COUNT;
-  
-  if (totalCurrent1 < 0) {
-    totalCurrent1 = 0;
-  } 
-}
-void pumptest(){
- for (int i = 0; i < SAMPLING_COUNT; i++) {
-    int analogValue2 = analogRead(E_SENSOR_2);
-    voltage2 = analogValue2 * (ADC_VOLTAGE / ADC_RESOLUTION);
-    current2 = (voltage2 - zeroPointVoltage2) / SENSITIVITY;
-    totalCurrent2 += current2;
-    delay(1);
-  }
-  totalCurrent2 /= SAMPLING_COUNT;
-  
-  if (totalCurrent2 < 0) {
-    totalCurrent2 = 0;
-  } 
-}
-void pump2test(){
- for (int i = 0; i < SAMPLING_COUNT; i++) {
-    int analogValue3 = analogRead(E_SENSOR_3);
-    voltage3 = analogValue3 * (ADC_VOLTAGE / ADC_RESOLUTION);
-    current3 = (voltage3 - zeroPointVoltage3) / SENSITIVITY;
-    totalCurrent3 += current3;
-    delay(1);
-  }
-  totalCurrent3 /= SAMPLING_COUNT;
-  
-  if (totalCurrent3 < 0) {
-    totalCurrent3 = 0;
-  }  
-}
-void bulbtest(){
- for (int i = 0; i < SAMPLING_COUNT; i++) {
-    int analogValue4 = analogRead(E_SENSOR_4);
-    voltage4 = analogValue4 * (ADC_VOLTAGE / ADC_RESOLUTION);
-    current4 = (voltage4 - zeroPointVoltage4) / SENSITIVITY;
-    totalCurrent4 += current4;
-    delay(1);
-  }
-  totalCurrent4 /= SAMPLING_COUNT;
-  
-  if (totalCurrent4 < 0) {
-    totalCurrent4 = 0;
-  }  
-}
-String foodrate (){
-  float foodAvailable = (1.0- (distance/distanceOrigin))*100.0;
-  return String(foodAvailable);
-}
-String waterrate (){
-  float waterAvailable = (1.0- (distance/distanceOrigin))*100.0;
-  return String(waterAvailable);
-}
-void publishDeviceStatus() { 
-  fantest();
-  pumptest();
-  pump2test();
-  bulbtest();
-  readSensors();
-  String payload1 = "Fan active: " + String(totalCurrent1, 2) + " A";
-  String payload2 = "Pump active: " + String(totalCurrent1, 2) + " A";
-  String payload3 = "Pump2 active: " + String(totalCurrent1, 2) + " A";
-  String payload4 = "Bulb active: " + String(totalCurrent1, 2) + " A";
-  String payload5 = "Fan unactive: " + String(totalCurrent1, 2) + " A";
-  String payload6 = "Pump unactive: " + String(totalCurrent1, 2) + " A";
-  String payload7 = "Pump2 unactive: " + String(totalCurrent1, 2) + " A";
-  String payload8 = "Bulb unactive: " + String(totalCurrent1, 2) + " A";
-  client.publish(topic0, String(temperature).c_str());
-  client.publish(topic1, String(humidity).c_str());
-  client.publish(topic2, String(airQuality).c_str());
-  client.publish(topic3, String(rate1).c_str());
-  client.publish(topic4, isFanOn ? "ON" : "OFF");
-  client.publish(topic5, isPumpOn ? "ON" : "OFF");
-  client.publish(topic6, currentMode == MANUAL ? "Manual" : "Automatic");
-  client.publish(topic7, isServoAt90 ? "ON" : "OFF");
-  client.publish(topic8, isBulbOn ? "ON" : "OFF");
-  client.publish(topic9, isPump2On ? "ON" : "OFF");
-  if (totalCurrent1 < NO_CURRENT_THRESHOLD && 
-      totalCurrent2 < NO_CURRENT_THRESHOLD && 
-      totalCurrent3 < NO_CURRENT_THRESHOLD && 
-      totalCurrent4 < NO_CURRENT_THRESHOLD) {
-  client.publish(topic10,payload1.c_str());
-  client.publish(topic11,payload2.c_str());
-  client.publish(topic12,payload3.c_str());
-  client.publish(topic13,payload4.c_str());
-  } else {
-  client.publish(topic10,payload5.c_str());
-  client.publish(topic11,payload6.c_str());
-  client.publish(topic12,payload7.c_str());
-  client.publish(topic13,payload8.c_str());
-  }
-  client.publish(topic14, String(rate2).c_str());
-}
+
+
+
 void updateStatusDisplay() {
     fantest();
     pumptest();
