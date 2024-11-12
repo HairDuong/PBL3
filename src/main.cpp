@@ -14,8 +14,8 @@ const long gmtOffset_sec = 7 * 3600;
 const int daylightOffset_sec = 0;
 
 // Wi-Fi and MQTT settings
-const char *ssid = "Phong6A6B";
-const char *password = "0918784850";
+const char *ssid = "Hoang11";
+const char *password = "123456789000";
 const char *mqtt_broker = "broker.emqx.io";
 const char *topic0 = "esp32/temp";
 const char *topic1 = "esp32/hum";
@@ -43,7 +43,7 @@ const int mqtt_port = 1883;
 #define servoPin 17
 #define DHTPIN 5
 #define DHTTYPE DHT11
-#define MQ135_PIN 13
+#define MQ135_PIN 4
 #define TRIG_PIN1 19
 #define ECHO_PIN1 18 
 #define TRIG_PIN2 12
@@ -110,7 +110,11 @@ unsigned long previousMillisOled = 0;
 const long debounceInterval = 50;  
 unsigned long previousMillis = 0;
 const long interval = 5000;
-float zeroPointVoltage1 = 2.5;  
+float zeroPointVoltage1 = 2.5; 
+unsigned long previousMillisWiFi = 0;
+unsigned long previousMillisMQTT = 0;
+const long wifiInterval = 500;  
+const long mqttInterval = 2000; 
 float voltage1, current1, totalCurrent1 = 0;
 float zeroPointVoltage2 = 2.5;  
 float voltage2, current2, totalCurrent2 = 0;
@@ -131,6 +135,38 @@ Adafruit_SH1106G display = Adafruit_SH1106G(128, 64, &Wire, -1);
 unsigned long previousSensorMillis = 0; 
 const unsigned long updateSensorInterval = 2000; 
 bool showSensorData = true;
+
+bool connectWiFi() {
+  if (WiFi.status() != WL_CONNECTED) {
+    unsigned long currentMillis = millis();
+    if (currentMillis - previousMillisWiFi >= wifiInterval) {
+      previousMillisWiFi = currentMillis;
+      Serial.println("Connecting to WiFi...");
+      WiFi.begin(ssid, password);
+      Serial.println("Connected to the WiFi network");
+    }
+    return false;
+  }
+  
+  return true;
+}
+bool connectMQTT() {
+  if (!client.connected()) {
+    unsigned long currentMillis = millis();
+    if (currentMillis - previousMillisMQTT >= mqttInterval) {
+      previousMillisMQTT = currentMillis;
+       String client_id = "esp32-client-";
+      client_id += String(WiFi.macAddress());
+      if (client.connect(client_id.c_str(), mqtt_username, mqtt_password)) {
+      Serial.println("Public emqx mqtt broker connected");
+      } else {
+        Serial.println("Failed to connect to MQTT, retrying...");
+      }
+    }
+    return false;
+  }
+  return true;
+}
 void callback(char *topic, byte *payload, unsigned int length) {
   String message;
   for (int i = 0; i < length; i++) message += (char)payload[i];
@@ -234,22 +270,9 @@ void setup() {
   zeroPointVoltage4 = voltage4;  
 
   WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.println("Connecting to WiFi..");
-  }
-  Serial.println("Connected to the WiFi network");
   client.setServer(mqtt_broker, mqtt_port);
   client.setCallback(callback);
-  while (!client.connected()) {
-    String client_id = "esp32-client-";
-    client_id += String(WiFi.macAddress());
-    if (client.connect(client_id.c_str(), mqtt_username, mqtt_password)) {
-      Serial.println("Public emqx mqtt broker connected");
-    } else {
-      delay(2000);
-    }
-  }
+
   client.subscribe(topic4);
   client.subscribe(topic5);
   client.subscribe(topic6);
@@ -271,7 +294,6 @@ String readUltrasonicSensor(int trigPin, int echoPin) {
   distance = (duration * 0.034) / 2;
   return String(distance);
 }
-
 String foodrate (){
   float foodAvailable = (1.0- (distance/distanceOrigin))*100.0;
   return String(foodAvailable);
@@ -293,65 +315,102 @@ void readSensors() {
         String rate2 = waterrate();
     }
 }
+void fantest() {
+  static unsigned long lastSampleTime1 = 0;
+  static int sampleCount1 = 0;
+  static float currentSum1 = 0;
+  
+  unsigned long currentMillis = millis();
+  if (currentMillis - lastSampleTime1 >= 1) {
+    lastSampleTime1 = currentMillis;
 
-
-void fantest(){
- for (int i = 0; i < SAMPLING_COUNT; i++) {
     int analogValue1 = analogRead(E_SENSOR_1);
     voltage1 = analogValue1 * (ADC_VOLTAGE / ADC_RESOLUTION);
     current1 = (voltage1 - zeroPointVoltage1) / SENSITIVITY;
-    totalCurrent1 += current1;
-    delay(1);
+    
+    currentSum1 += current1;
+    sampleCount1++;
+
+    if (sampleCount1 >= SAMPLING_COUNT) {
+      totalCurrent1 = currentSum1 / SAMPLING_COUNT;
+      totalCurrent1 = totalCurrent1 < 0 ? 0 : totalCurrent1;
+      sampleCount1 = 0;
+      currentSum1 = 0;
+    }
   }
-  totalCurrent1 /= SAMPLING_COUNT;
-  
-  if (totalCurrent1 < 0) {
-    totalCurrent1 = 0;
-  } 
 }
-void pumptest(){
- for (int i = 0; i < SAMPLING_COUNT; i++) {
+void pumptest() {
+  static unsigned long lastSampleTime2 = 0;
+  static int sampleCount2 = 0;
+  static float currentSum2 = 0;
+  
+  unsigned long currentMillis = millis();
+  if (currentMillis - lastSampleTime2 >= 1) {
+    lastSampleTime2 = currentMillis;
+
     int analogValue2 = analogRead(E_SENSOR_2);
     voltage2 = analogValue2 * (ADC_VOLTAGE / ADC_RESOLUTION);
     current2 = (voltage2 - zeroPointVoltage2) / SENSITIVITY;
-    totalCurrent2 += current2;
-    delay(1);
+    
+    currentSum2 += current2;
+    sampleCount2++;
+
+    if (sampleCount2 >= SAMPLING_COUNT) {
+      totalCurrent2 = currentSum2 / SAMPLING_COUNT;
+      totalCurrent2 = totalCurrent2 < 0 ? 0 : totalCurrent2;
+      sampleCount2 = 0;
+      currentSum2 = 0;
+    }
   }
-  totalCurrent2 /= SAMPLING_COUNT;
-  
-  if (totalCurrent2 < 0) {
-    totalCurrent2 = 0;
-  } 
 }
-void pump2test(){
- for (int i = 0; i < SAMPLING_COUNT; i++) {
+void pump2test() {
+  static unsigned long lastSampleTime3 = 0;
+  static int sampleCount3 = 0;
+  static float currentSum3 = 0;
+  
+  unsigned long currentMillis = millis();
+  if (currentMillis - lastSampleTime3 >= 1) {
+    lastSampleTime3 = currentMillis;
+
     int analogValue3 = analogRead(E_SENSOR_3);
     voltage3 = analogValue3 * (ADC_VOLTAGE / ADC_RESOLUTION);
     current3 = (voltage3 - zeroPointVoltage3) / SENSITIVITY;
-    totalCurrent3 += current3;
-    delay(1);
+    
+    currentSum3 += current3;
+    sampleCount3++;
+
+    if (sampleCount3 >= SAMPLING_COUNT) {
+      totalCurrent3 = currentSum3 / SAMPLING_COUNT;
+      totalCurrent3 = totalCurrent3 < 0 ? 0 : totalCurrent3;
+      sampleCount3 = 0;
+      currentSum3 = 0;
+    }
   }
-  totalCurrent3 /= SAMPLING_COUNT;
-  
-  if (totalCurrent3 < 0) {
-    totalCurrent3 = 0;
-  }  
 }
-void bulbtest(){
- for (int i = 0; i < SAMPLING_COUNT; i++) {
+void bulbtest() {
+  static unsigned long lastSampleTime4 = 0;
+  static int sampleCount4 = 0;
+  static float currentSum4 = 0;
+  
+  unsigned long currentMillis = millis();
+  if (currentMillis - lastSampleTime4 >= 1) {
+    lastSampleTime4 = currentMillis;
+
     int analogValue4 = analogRead(E_SENSOR_4);
     voltage4 = analogValue4 * (ADC_VOLTAGE / ADC_RESOLUTION);
     current4 = (voltage4 - zeroPointVoltage4) / SENSITIVITY;
-    totalCurrent4 += current4;
-    delay(1);
-  }
-  totalCurrent4 /= SAMPLING_COUNT;
-  
-  if (totalCurrent4 < 0) {
-    totalCurrent4 = 0;
-  }  
-}
+    
+    currentSum4 += current4;
+    sampleCount4++;
 
+    if (sampleCount4 >= SAMPLING_COUNT) {
+      totalCurrent4 = currentSum4 / SAMPLING_COUNT;
+      totalCurrent4 = totalCurrent4 < 0 ? 0 : totalCurrent4;
+      sampleCount4 = 0;
+      currentSum4 = 0;
+    }
+  }
+}
 void publishDeviceStatus() { 
   fantest();
   pumptest();
@@ -392,7 +451,6 @@ void publishDeviceStatus() {
   }
   client.publish(topic14, String(rate2).c_str());
 }
-
 void handleServoControl() {
   unsigned long currentMillis = millis(); 
 
@@ -504,9 +562,6 @@ void handleBulbControl() {
 
   lastBulbButtonState = BulbButtonState;
 }
-
-
-
 void updateStatusDisplay() {
     fantest();
     pumptest();
@@ -531,23 +586,49 @@ void updateStatusDisplay() {
     
     switch (currentScreen) {
         case 0: 
-            display.println("Time: " + String(timeStringBuff));  
-            display.println("Sensor Data:");                   
-            display.println("Temp: " + String(temperature) + " C");  
-            display.println("Humidity: " + String(humidity) + " %");  
-            display.println("Air Quality: " + String(airQuality));  
-            display.println("Food Rate: " + String(rate1) + "%");
-            display.println("Water Rate: " + String(rate2) + "%");
+            display.print(F("Time: "));
+            display.println(timeStringBuff);
+
+            display.print(F("Temp: "));
+            display.print(temperature);
+            display.println(F(" C"));
+
+            display.print(F("Humidity: "));
+            display.print(humidity);
+            display.println(F(" %"));
+
+            display.print(F("Air Quality: "));
+            display.println(airQuality);
+
+            display.print(F("Food Rate: "));
+            display.print(rate1);
+            display.println(F("%"));
+
+            display.print(F("Water Rate: "));
+            display.print(rate2);
+            display.println(F("%"));
             break;
 
         case 1: 
-            display.println("Device Status:");                       
-            display.println(isFanOn ? "Fan: ON" : "Fan: OFF");       
-            display.println(currentMode == AUTOMATIC ? "Fan mode: AUTOMATIC" : "Fan mode: MANUAL"); 
-            display.println(isPumpOn ? "Pump: ON" : "Pump: OFF");    
-            display.println(isPump2On ? "Pump2: ON" : "Pump2: OFF");    
-            display.println(isBulbOn ? "Bulb: ON" : "Bulb: OFF");    
-            display.println(isServoAt90 ? "Servo: ON" : "Servo: OFF"); 
+            display.println(F("Device Status:"));
+                      
+            display.print(F("Fan: "));    
+            display.println(isFanOn ? F("ON") : F("OFF"));
+
+            display.print(F("Fan mode: "));
+            display.println(currentMode == AUTOMATIC ? F("AUTOMATIC") : F("MANUAL"));
+
+            display.print(F("Pump: "));
+            display.println(isPumpOn ? F("ON") : F("OFF"));
+
+            display.print(F("Pump2: "));
+            display.println(isPump2On ? F("ON") : F("OFF"));
+
+            display.print(F("Bulb: "));
+            display.println(isBulbOn ? F("ON") : F("OFF"));
+
+            display.print(F("Servo: "));
+            display.println(isServoAt90 ? F("ON") : F("OFF"));
             break;
 
         case 2:  
@@ -555,16 +636,37 @@ void updateStatusDisplay() {
                 totalCurrent2 < NO_CURRENT_THRESHOLD && 
                 totalCurrent3 < NO_CURRENT_THRESHOLD && 
                 totalCurrent4 < NO_CURRENT_THRESHOLD) {
-            display.println("Fan active: " + String(totalCurrent1, 2) + " A");
-            display.println("Pump active: " + String(totalCurrent1, 2) + " A");
-            display.println("Pump2 active: " + String(totalCurrent1, 2) + " A");
-            display.println("Bulb active: " + String(totalCurrent1, 2) + " A");
-           } else
-            {
-            display.println("Fan unactive: " + String(totalCurrent1, 2) + " A");
-            display.println("Pump unactive: " + String(totalCurrent1, 2) + " A");
-            display.println("Pump2 unactive: " + String(totalCurrent1, 2) + " A");
-            display.println("Bulb unactive: " + String(totalCurrent1, 2) + " A");
+            display.print(F("Fan active: "));
+            display.print(String(totalCurrent1, 2));
+            display.println(F(" A"));
+
+            display.print(F("Pump active: "));
+            display.print(String(totalCurrent1, 2));
+            display.println(F(" A"));
+
+            display.print(F("Pump2 active: "));
+            display.print(String(totalCurrent1, 2));
+            display.println(F(" A"));
+
+            display.print(F("Bulb active: "));
+            display.print(String(totalCurrent1, 2));
+            display.println(F(" A"));
+ } else {
+            display.print(F("Fan unactive: "));
+            display.print(String(totalCurrent1, 2));
+            display.println(F(" A"));
+
+            display.print(F("Pump unactive: "));
+            display.print(String(totalCurrent1, 2));
+            display.println(F(" A"));
+
+            display.print(F("Pump2 unactive: "));
+            display.print(String(totalCurrent1, 2));
+            display.println(F(" A"));
+
+            display.print(F("Bulb unactive: "));
+            display.print(String(totalCurrent1, 2));
+            display.println(F(" A"));
            } 
             break;
         default:
@@ -584,7 +686,10 @@ void loop() {
   pump2test();
   bulbtest();
   updateStatusDisplay();
-  if (WiFi.status() == WL_CONNECTED) {
+  if (connectWiFi()) {
+  connectMQTT();
+  }
+  if (client.connected()) {
   publishDeviceStatus();
   client.loop();
   }
