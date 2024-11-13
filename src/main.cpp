@@ -7,6 +7,7 @@
 #include <time.h>
 #include <PCF8574.h>
 
+
 PCF8574 pcf8574(0x20); 
 
 // Configuration for NTP Time
@@ -14,30 +15,30 @@ const long gmtOffset_sec = 7 * 3600;
 const int daylightOffset_sec = 0;
 
 // Wi-Fi and MQTT settings
-const char *ssid = "Hoang11";
-const char *password = "123456789000";
-const char *mqtt_broker = "broker.emqx.io";
-const char *topic0 = "esp32/temp";
-const char *topic1 = "esp32/hum";
-const char *topic2 = "esp32/air";
-const char *topic3 = "esp32/foodrate";
-const char *topic4 = "esp32/fan/control";
-const char *topic5 = "esp32/pump/control";
-const char *topic6 = "esp32/mode";
-const char *topic7 = "esp32/servo/control";
-const char *topic8 = "esp32/bulb/control";
-const char *topic9 = "esp32/pump2/control";
-const char *topic10 = "esp32/fan/test";
-const char *topic11 = "esp32/pump/test";
-const char *topic12 = "esp32/pump2/test";
-const char *topic13 = "esp32/bulb/test";
-const char *topic14 = "esp32/waterrate";
-const char *topic15 = "targetHour";
-const char *topic16 = "targetMinute";
-const char *topic17 = "targetSecond";
-const char *mqtt_username = "hoangpham1";
-const char *mqtt_password = "123456";
-const int mqtt_port = 1883;
+const char *ssid PROGMEM = "Hoang11";
+const char *password PROGMEM = "123456789000";
+const char *mqtt_broker PROGMEM = "broker.emqx.io";
+const char *topic0 PROGMEM = "esp32/temp";
+const char *topic1 PROGMEM = "esp32/hum";
+const char *topic2 PROGMEM = "esp32/air";
+const char *topic3 PROGMEM = "esp32/foodrate";
+const char *topic4 PROGMEM = "esp32/fan/control";
+const char *topic5 PROGMEM = "esp32/pump/control";
+const char *topic6 PROGMEM = "esp32/mode";
+const char *topic7 PROGMEM = "esp32/servo/control";
+const char *topic8 PROGMEM = "esp32/bulb/control";
+const char *topic9 PROGMEM = "esp32/pump2/control";
+const char *topic10 PROGMEM = "esp32/fan/test";
+const char *topic11 PROGMEM = "esp32/pump/test";
+const char *topic12 PROGMEM = "esp32/pump2/test";
+const char *topic13 PROGMEM = "esp32/bulb/test";
+const char *topic14 PROGMEM = "esp32/waterrate";
+const char *topic15 PROGMEM = "targetHour";
+const char *topic16 PROGMEM = "targetMinute";
+const char *topic17 PROGMEM = "targetSecond";
+const char *mqtt_username PROGMEM = "hoangpham1";
+const char *mqtt_password PROGMEM = "123456";
+const int mqtt_port PROGMEM = 1883;
 
 // Pin definitions
 #define servoPin 17
@@ -315,107 +316,38 @@ void readSensors() {
         String rate2 = waterrate();
     }
 }
-void fantest() {
-  static unsigned long lastSampleTime1 = 0;
-  static int sampleCount1 = 0;
-  static float currentSum1 = 0;
+void currentTest(int sensorPin, float zeroPointVoltage, float &totalCurrent) {
+  static unsigned long lastSampleTime = 0;
+  static int sampleCount = 0;
+  static float currentSum = 0;
   
   unsigned long currentMillis = millis();
-  if (currentMillis - lastSampleTime1 >= 1) {
-    lastSampleTime1 = currentMillis;
+  if (currentMillis - lastSampleTime >= 1) {
+    lastSampleTime = currentMillis;
 
-    int analogValue1 = analogRead(E_SENSOR_1);
-    voltage1 = analogValue1 * (ADC_VOLTAGE / ADC_RESOLUTION);
-    current1 = (voltage1 - zeroPointVoltage1) / SENSITIVITY;
+    int analogValue = analogRead(sensorPin);
+    float voltage = analogValue * (ADC_VOLTAGE / ADC_RESOLUTION);
+    float current = (voltage - zeroPointVoltage) / SENSITIVITY;
     
-    currentSum1 += current1;
-    sampleCount1++;
+    currentSum += current;
+    sampleCount++;
 
-    if (sampleCount1 >= SAMPLING_COUNT) {
-      totalCurrent1 = currentSum1 / SAMPLING_COUNT;
-      totalCurrent1 = totalCurrent1 < 0 ? 0 : totalCurrent1;
-      sampleCount1 = 0;
-      currentSum1 = 0;
+    if (sampleCount >= SAMPLING_COUNT) {
+      totalCurrent = currentSum / SAMPLING_COUNT;
+      totalCurrent = totalCurrent < 0 ? 0 : totalCurrent;
+      sampleCount = 0;
+      currentSum = 0;
     }
   }
 }
-void pumptest() {
-  static unsigned long lastSampleTime2 = 0;
-  static int sampleCount2 = 0;
-  static float currentSum2 = 0;
-  
-  unsigned long currentMillis = millis();
-  if (currentMillis - lastSampleTime2 >= 1) {
-    lastSampleTime2 = currentMillis;
-
-    int analogValue2 = analogRead(E_SENSOR_2);
-    voltage2 = analogValue2 * (ADC_VOLTAGE / ADC_RESOLUTION);
-    current2 = (voltage2 - zeroPointVoltage2) / SENSITIVITY;
-    
-    currentSum2 += current2;
-    sampleCount2++;
-
-    if (sampleCount2 >= SAMPLING_COUNT) {
-      totalCurrent2 = currentSum2 / SAMPLING_COUNT;
-      totalCurrent2 = totalCurrent2 < 0 ? 0 : totalCurrent2;
-      sampleCount2 = 0;
-      currentSum2 = 0;
-    }
-  }
-}
-void pump2test() {
-  static unsigned long lastSampleTime3 = 0;
-  static int sampleCount3 = 0;
-  static float currentSum3 = 0;
-  
-  unsigned long currentMillis = millis();
-  if (currentMillis - lastSampleTime3 >= 1) {
-    lastSampleTime3 = currentMillis;
-
-    int analogValue3 = analogRead(E_SENSOR_3);
-    voltage3 = analogValue3 * (ADC_VOLTAGE / ADC_RESOLUTION);
-    current3 = (voltage3 - zeroPointVoltage3) / SENSITIVITY;
-    
-    currentSum3 += current3;
-    sampleCount3++;
-
-    if (sampleCount3 >= SAMPLING_COUNT) {
-      totalCurrent3 = currentSum3 / SAMPLING_COUNT;
-      totalCurrent3 = totalCurrent3 < 0 ? 0 : totalCurrent3;
-      sampleCount3 = 0;
-      currentSum3 = 0;
-    }
-  }
-}
-void bulbtest() {
-  static unsigned long lastSampleTime4 = 0;
-  static int sampleCount4 = 0;
-  static float currentSum4 = 0;
-  
-  unsigned long currentMillis = millis();
-  if (currentMillis - lastSampleTime4 >= 1) {
-    lastSampleTime4 = currentMillis;
-
-    int analogValue4 = analogRead(E_SENSOR_4);
-    voltage4 = analogValue4 * (ADC_VOLTAGE / ADC_RESOLUTION);
-    current4 = (voltage4 - zeroPointVoltage4) / SENSITIVITY;
-    
-    currentSum4 += current4;
-    sampleCount4++;
-
-    if (sampleCount4 >= SAMPLING_COUNT) {
-      totalCurrent4 = currentSum4 / SAMPLING_COUNT;
-      totalCurrent4 = totalCurrent4 < 0 ? 0 : totalCurrent4;
-      sampleCount4 = 0;
-      currentSum4 = 0;
-    }
-  }
+void updateCurrents() {
+  currentTest(E_SENSOR_1, zeroPointVoltage1, totalCurrent1);
+  currentTest(E_SENSOR_2, zeroPointVoltage2, totalCurrent2);
+  currentTest(E_SENSOR_3, zeroPointVoltage3, totalCurrent3);
+  currentTest(E_SENSOR_4, zeroPointVoltage4, totalCurrent4);
 }
 void publishDeviceStatus() { 
-  fantest();
-  pumptest();
-  pump2test();
-  bulbtest();
+  updateCurrents();
   readSensors();
   String payload1 = "Fan active: " + String(totalCurrent1, 2) + " A";
   String payload2 = "Pump active: " + String(totalCurrent1, 2) + " A";
@@ -563,10 +495,7 @@ void handleBulbControl() {
   lastBulbButtonState = BulbButtonState;
 }
 void updateStatusDisplay() {
-    fantest();
-    pumptest();
-    pump2test();
-    bulbtest();
+    updateCurrents();
     automaticfeeding(); 
     char timeStringBuff[10];
     strftime(timeStringBuff, sizeof(timeStringBuff), "%H:%M:%S", &timeinfo); 
@@ -641,15 +570,15 @@ void updateStatusDisplay() {
             display.println(F(" A"));
 
             display.print(F("Pump active: "));
-            display.print(String(totalCurrent1, 2));
+            display.print(String(totalCurrent2, 2));
             display.println(F(" A"));
 
             display.print(F("Pump2 active: "));
-            display.print(String(totalCurrent1, 2));
+            display.print(String(totalCurrent3, 2));
             display.println(F(" A"));
 
             display.print(F("Bulb active: "));
-            display.print(String(totalCurrent1, 2));
+            display.print(String(totalCurrent4, 2));
             display.println(F(" A"));
  } else {
             display.print(F("Fan unactive: "));
@@ -657,15 +586,15 @@ void updateStatusDisplay() {
             display.println(F(" A"));
 
             display.print(F("Pump unactive: "));
-            display.print(String(totalCurrent1, 2));
+            display.print(String(totalCurrent2, 2));
             display.println(F(" A"));
 
             display.print(F("Pump2 unactive: "));
-            display.print(String(totalCurrent1, 2));
+            display.print(String(totalCurrent3, 2));
             display.println(F(" A"));
 
             display.print(F("Bulb unactive: "));
-            display.print(String(totalCurrent1, 2));
+            display.print(String(totalCurrent4, 2));
             display.println(F(" A"));
            } 
             break;
@@ -681,10 +610,7 @@ void loop() {
   handlePump2Control();
   handleBulbControl();
   handleServoControl();
-  fantest();
-  pumptest();
-  pump2test();
-  bulbtest();
+  updateCurrents();
   updateStatusDisplay();
   if (connectWiFi()) {
   connectMQTT();
