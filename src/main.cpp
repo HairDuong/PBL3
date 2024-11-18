@@ -15,8 +15,8 @@ const long gmtOffset_sec = 7 * 3600;
 const int daylightOffset_sec = 0;
 
 // Wi-Fi and MQTT settings
-const char *ssid PROGMEM = "Hoang11";
-const char *password PROGMEM = "123456789000";
+const char *ssid PROGMEM = "Phong6A6B";
+const char *password PROGMEM = "0918784850";
 const char *mqtt_broker PROGMEM = "broker.emqx.io";
 const char *topic0 PROGMEM = "esp32/temp";
 const char *topic1 PROGMEM = "esp32/hum";
@@ -44,17 +44,17 @@ const int mqtt_port PROGMEM = 1883;
 #define servoPin 17
 #define DHTPIN 5
 #define DHTTYPE DHT11
-#define MQ135_PIN 4
+#define MQ135_PIN 32
 #define TRIG_PIN1 19
 #define ECHO_PIN1 18 
-#define TRIG_PIN2 12
-#define ECHO_PIN2 14
+#define TRIG_PIN2 14
+#define ECHO_PIN2 12
 #define FAN_BUTTON_PIN 0
 #define FAN_RELAY_PIN 27
 #define PUMP_BUTTON_PIN 1
 #define PUMP_RELAY_PIN 25
 #define PUMP2_BUTTON_PIN 2
-#define PUMP2_RELAY_PIN 32
+#define PUMP2_RELAY_PIN 23
 #define MODE_BUTTON_PIN 5
 #define BULB_RELAY_PIN 33
 #define BULB_BUTTON_PIN 15
@@ -74,10 +74,13 @@ const int mqtt_port PROGMEM = 1883;
 float temperature = 0.0;
 float humidity = 0.0;
 int airQuality = 0;
-float distance = 0.0;
-long duration;
-int rate1 = 0.0;
-int rate2 = 0.0;
+long duration1;
+long duration2;
+float distance1=0.0;
+float distance2=0.0;
+float distanceOrigin = 8.0;
+String rate1;
+String rate2;
 bool isFanOn = false;
 bool lastFanButtonState = HIGH; 
 bool isPumpOn = false;
@@ -99,7 +102,6 @@ bool isServoAt90 = false;
 int lastServoButtonState = HIGH;  
 struct tm timeinfo;
 int currentScreen = 0;
-float distanceOrigin = 8.0;
 
 unsigned long previousMillisPump = 0; 
 unsigned long previousMillisPump2 = 0;
@@ -284,36 +286,54 @@ void setup() {
   client.subscribe(topic16);
   client.subscribe(topic17);
 }
-String readUltrasonicSensor(int trigPin, int echoPin) {
-  digitalWrite(trigPin, LOW);
-  delayMicroseconds(2);
-  digitalWrite(echoPin, HIGH);
-  delayMicroseconds(10);
-  digitalWrite(trigPin, LOW);
-  duration = pulseIn(echoPin, HIGH, 30000UL);
-  if (duration == 0) return "Error";
-  distance = (duration * 0.034) / 2;
-  return String(distance);
-}
-String foodrate (){
-  float foodAvailable = (1.0- (distance/distanceOrigin))*100.0;
+String readUltrasonicSensor1() {
+  digitalWrite(TRIG_PIN1,0); //Tắt chân trig
+  delayMicroseconds(2); 
+  digitalWrite(TRIG_PIN1,1); //bật chân trig để phát xung
+  delayMicroseconds(10); //Xung có độ rộng là 10 microsecond
+  digitalWrite(TRIG_PIN1,0);
+
+  duration1 = pulseIn (ECHO_PIN1, HIGH);
+  
+   distance1 = (duration1 / 2 / 29.412); 
+  return String(distance1);}
+
+String readUltrasonicSensor2() {
+  digitalWrite(TRIG_PIN2,0); //Tắt chân trig
+  delayMicroseconds(2); 
+  digitalWrite(TRIG_PIN2,1); //bật chân trig để phát xung
+  delayMicroseconds(10); //Xung có độ rộng là 10 microsecond
+  digitalWrite(TRIG_PIN2,0);
+
+  duration2 = pulseIn (ECHO_PIN2, HIGH);
+  
+   distance2 = (duration2 / 2 / 29.412); 
+  return String(distance2);}
+String foodrate ()
+{
+  float foodAvailable = (1.0- (distance1/distanceOrigin))*100.0;
   return String(foodAvailable);
 }
 String waterrate (){
-  float waterAvailable = (1.0- (distance/distanceOrigin))*100.0;
-  return String(waterAvailable);
-}
+  float waterAvailable = (1.0- (distance2/distanceOrigin))*100.0;
+  return String(waterAvailable);}
+
 void readSensors() {
   unsigned long currentMillis = millis();
-    if (currentMillis - previousSensorMillis >= updateSensorInterval) {
+    if (currentMillis - previousSensorMillis >= updateSensorInterval) 
+    {
         previousSensorMillis = currentMillis;
         temperature = dht.readTemperature();
         humidity = dht.readHumidity();
         airQuality = analogRead(MQ135_PIN);
-        String ultrasonicDistance1 = readUltrasonicSensor(TRIG_PIN1, ECHO_PIN1);
-        String ultrasonicDistance2 = readUltrasonicSensor(TRIG_PIN2, ECHO_PIN2);
-        String rate1 = foodrate();
-        String rate2 = waterrate();
+        String ultrasonicDistance1 = readUltrasonicSensor1();
+        rate1 = foodrate();
+        String ultrasonicDistance2 = readUltrasonicSensor2();
+        rate2 = waterrate();
+        Serial.println(" phan tram thuc an ");
+        Serial.println(rate1);
+        Serial.println(" phan tram nuoc ");
+        Serial.println(rate2);
     }
 }
 void currentTest(int sensorPin, float zeroPointVoltage, float &totalCurrent) {
@@ -561,42 +581,65 @@ void updateStatusDisplay() {
             break;
 
         case 2:  
-            if (totalCurrent1 < NO_CURRENT_THRESHOLD && 
-                totalCurrent2 < NO_CURRENT_THRESHOLD && 
-                totalCurrent3 < NO_CURRENT_THRESHOLD && 
-                totalCurrent4 < NO_CURRENT_THRESHOLD) {
-            display.print(F("Fan active: "));
+            if (totalCurrent1 < NO_CURRENT_THRESHOLD)
+             {
+               display.print(F("Fan active: "));
+               display.print(String(totalCurrent1, 2));
+              display.println(F(" A"));
+             }
+             else 
+             {
+              display.print(F("Fan unactive: "));
             display.print(String(totalCurrent1, 2));
             display.println(F(" A"));
 
-            display.print(F("Pump active: "));
+             };
+             if (totalCurrent2 < NO_CURRENT_THRESHOLD)
+             {
+              display.print(F("Pump active: "));
             display.print(String(totalCurrent2, 2));
             display.println(F(" A"));
 
-            display.print(F("Pump2 active: "));
+             }
+             else
+             {
+              display.print(F("Pump unactive: "));
+            display.print(String(totalCurrent2, 2));
+            display.println(F(" A"));
+
+             };
+             if (totalCurrent3 < NO_CURRENT_THRESHOLD )
+             {
+              display.print(F("Pump2 active: "));
             display.print(String(totalCurrent3, 2));
             display.println(F(" A"));
 
-            display.print(F("Bulb active: "));
+             }
+             else
+             {
+               display.print(F("Pump2 unactive: "));
+            display.print(String(totalCurrent3, 2));
+            display.println(F(" A"));
+
+             };
+             if (totalCurrent4 < NO_CURRENT_THRESHOLD)
+             {
+              display.print(F("Bulb active: "));
             display.print(String(totalCurrent4, 2));
             display.println(F(" A"));
- } else {
-            display.print(F("Fan unactive: "));
-            display.print(String(totalCurrent1, 2));
-            display.println(F(" A"));
+           
 
-            display.print(F("Pump unactive: "));
-            display.print(String(totalCurrent2, 2));
-            display.println(F(" A"));
-
-            display.print(F("Pump2 unactive: "));
-            display.print(String(totalCurrent3, 2));
-            display.println(F(" A"));
-
+             }
+              else
+            {
+              
             display.print(F("Bulb unactive: "));
             display.print(String(totalCurrent4, 2));
             display.println(F(" A"));
-           } 
+              
+            };
+                
+           
             break;
         default:
             break;
@@ -604,14 +647,14 @@ void updateStatusDisplay() {
     display.display();
 }
 void loop() {
-  readSensors();
-  handleFanControl();
-  handlePumpControl();
-  handlePump2Control();
-  handleBulbControl();
-  handleServoControl();
-  updateCurrents();
-  updateStatusDisplay();
+ readSensors();
+ handleFanControl();
+ handlePumpControl();
+ handlePump2Control();
+ handleBulbControl();
+ handleServoControl();
+ updateCurrents();
+ updateStatusDisplay();
   if (connectWiFi()) {
   connectMQTT();
   }
