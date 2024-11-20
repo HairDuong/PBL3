@@ -349,16 +349,24 @@ void readSensors() {
     }
 }
 void publishDeviceStatus() { 
-
+  calibrateSensors();
   readSensors();
-  String payload1 = "Fan active: " + String(current1, 3) + " A";
-  String payload2 = "Pump active: " + String(current2, 3) + " A";
-  String payload3 = "Pump2 active: " + String(current3, 3) + " A";
-  String payload4 = "Bulb active: " + String(current4, 3) + " A";
-  String payload5 = "Fan unactive: " + String(current1, 3) + " A";
-  String payload6 = "Pump unactive: " + String(current2, 3) + " A";
-  String payload7 = "Pump2 unactive: " + String(current3, 3) + " A";
-  String payload8 = "Bulb unactive: " + String(current3, 3) + " A";
+  String payload1 = "Fan active: " + String(current1, 3) + " A\n";
+  payload1 += "Fan Voltage: " + String(offsetVoltage1, 3) + " V";
+  String payload2 = "Pump active: " + String(current2, 3) + " A\n";
+  payload2 += "Pump Voltage: " + String(offsetVoltage2, 3) + " V";
+  String payload3 = "Pump2 active: " + String(current3, 3) + " A\n";
+  payload3 += "Pump2 Voltage: " + String(offsetVoltage3, 3) + " V";
+  String payload4 = "Bulb active: " + String(current4, 3) + " A\n";
+  payload4 += "Bulb Voltage: " + String(offsetVoltage4, 3) + " V";
+  String payload5 = "Fan unactive: " + String(current1, 3) + " A\n";
+  payload5 += "Fan Voltage: " + String(offsetVoltage1, 3) + " V";
+  String payload6 = "Pump unactive: " + String(current2, 3) + " A\n";
+  payload6 += "Pump Voltage: " + String(offsetVoltage2, 3) + " V";
+  String payload7 = "Pump2 unactive: " + String(current3, 3) + " A\n";
+  payload7 += "Pump2 Voltage: " + String(offsetVoltage3, 3) + " V";
+  String payload8 = "Bulb unactive: " + String(current3, 3) + " A\n";
+  payload8 += "Bulb Voltage: " + String(offsetVoltage4, 3) + " V";
   client.publish(topic0, String(temperature).c_str());
   client.publish(topic1, String(humidity).c_str());
   client.publish(topic2, String(airQuality).c_str());
@@ -504,6 +512,7 @@ void handleBulbControl() {
 }
 void updateStatusDisplay() {
     readSensors();
+    calibrateSensors();
     automaticfeeding(); 
     char timeStringBuff[10];
     strftime(timeStringBuff, sizeof(timeStringBuff), "%H:%M:%S", &timeinfo); 
@@ -573,25 +582,33 @@ void updateStatusDisplay() {
              {
             display.print(F("Fan active: "));
             display.print(String(current1, 3));
-            display.println(F(" A"));
+            display.print(F(" A - "));
+            display.print(String(offsetVoltage1, 2));
+            display.println(F("V"));
              }
              else 
              {
             display.print(F("Fan unactive: "));
             display.print(String(current1, 3));
-            display.println(F(" A"));
+            display.print(F(" A - "));
+            display.print(String(offsetVoltage1, 2));
+            display.println(F("V"));
              };
              if (current2 > 0.1)
              {
             display.print(F("Pump active: "));
             display.print(String(current2, 3));
-            display.println(F(" A"));
+            display.print(F(" A - "));
+            display.print(String(offsetVoltage2, 2));
+            display.println(F("V"));
              }
              else
              {
             display.print(F("Pump unactive: "));
             display.print(String(current2, 3));
-            display.println(F(" A"));
+            display.print(F(" A - "));
+            display.print(String(offsetVoltage2, 2));
+            display.println(F("V"));
              };
              if (current3 > 0.1)
              {
@@ -603,19 +620,25 @@ void updateStatusDisplay() {
              {
             display.print(F("Pump2 unactive: "));
             display.print(String(current3, 3));
-            display.println(F(" A"));
+            display.print(F(" A - "));
+            display.print(String(offsetVoltage3, 2));
+            display.println(F("V"));
              };
              if (current4 > 0.1)
              {
             display.print(F("Bulb active: "));
             display.print(String(current4, 3));
-            display.println(F(" A"));
+            display.print(F(" A - "));
+            display.print(String(offsetVoltage4, 2));
+            display.println(F("V"));
              }
               else
             {
             display.print(F("Bulb unactive: "));
             display.print(String(current4, 3));
-            display.println(F(" A"));
+            display.print(F(" A - "));
+            display.print(String(offsetVoltage4, 2));
+            display.println(F("V"));
             };
                 
             break;
