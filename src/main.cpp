@@ -15,8 +15,8 @@ const long gmtOffset_sec = 7 * 3600;
 const int daylightOffset_sec = 0;
 
 // Wi-Fi and MQTT settings
-const char *ssid PROGMEM = "Hoang11";
-const char *password PROGMEM = "0";
+const char *ssid PROGMEM = "Hoang11 ";
+const char *password PROGMEM = "123456789000";
 const char *mqtt_broker PROGMEM = "broker.emqx.io";
 const char *topic0 PROGMEM = "esp32/temp";
 const char *topic1 PROGMEM = "esp32/hum";
@@ -41,23 +41,23 @@ const char *mqtt_password PROGMEM = "123456";
 const int mqtt_port PROGMEM = 1883;
 
 // Pin definitions
-#define servoPin 17
-#define DHTPIN 5
+#define servoPin 13
+#define DHTPIN 4
 #define DHTTYPE DHT11
-#define MQ135_PIN 32
-#define TRIG_PIN1 19
-#define ECHO_PIN1 18 
-#define TRIG_PIN2 14
-#define ECHO_PIN2 12
+#define MQ135_PIN 34
+#define TRIG_PIN1 16
+#define ECHO_PIN1 17 
+#define TRIG_PIN2 18
+#define ECHO_PIN2 19
 #define FAN_BUTTON_PIN 0
-#define FAN_RELAY_PIN 27
+#define FAN_RELAY_PIN 26
 #define PUMP_BUTTON_PIN 1
-#define PUMP_RELAY_PIN 25
+#define PUMP_RELAY_PIN 27
 #define PUMP2_BUTTON_PIN 2
-#define PUMP2_RELAY_PIN 23
+#define PUMP2_RELAY_PIN 12
 #define MODE_BUTTON_PIN 5
-#define BULB_RELAY_PIN 33
-#define BULB_BUTTON_PIN 15
+#define BULB_RELAY_PIN 14
+#define BULB_BUTTON_PIN 3
 #define SERVO_BUTTON_PIN 4 
 #define OLED_BUTTON_PIN 6 
 #define SENSITIVITY 0.185  
@@ -66,9 +66,9 @@ const int mqtt_port PROGMEM = 1883;
 #define SAMPLING_COUNT 1000  
 #define NO_CURRENT_THRESHOLD 0.1  
 const int ACS712Pin1 = 35;       
-const int ACS712Pin2 = 34;       
-const int ACS712Pin3 = 39;      
-const int ACS712Pin4 = 36; 
+const int ACS712Pin2 = 32;       
+const int ACS712Pin3 = 33;      
+const int ACS712Pin4 = 25; 
 
 // Global variables
 float temperature = 0.0;
@@ -120,6 +120,7 @@ const long wifiInterval = 500;
 const long mqttInterval = 2000; 
 const float sensitivity = 0.185; 
 const int numSamples = 100;      
+const unsigned long measurementInterval = 2000;
 float offsetVoltage1 = 0.0;      
 float offsetVoltage2 = 0.0;      
 float offsetVoltage3 = 0.0;      
@@ -283,6 +284,14 @@ void calibrateSensors() {
     calibrating = false; 
   }
 }
+void measureCurrents() {
+  lastMeasurementTime = millis();
+
+   current1 = readCurrent(ACS712Pin1, offsetVoltage1);
+   current2 = readCurrent(ACS712Pin2, offsetVoltage2);
+   current3 = readCurrent(ACS712Pin3, offsetVoltage3);
+   current4 = readCurrent(ACS712Pin4, offsetVoltage4);
+}
 float readCurrent(int pin, float offsetVoltage) {
   const int samplingTime = 100; 
   unsigned long startTime = millis();
@@ -342,10 +351,7 @@ void readSensors() {
         rate1 = foodrate();
         String ultrasonicDistance2 = readUltrasonicSensor2();
         rate2 = waterrate();
-        current1 = readCurrent(ACS712Pin1, offsetVoltage1);
-        current2 = readCurrent(ACS712Pin2, offsetVoltage2);
-        current3 = readCurrent(ACS712Pin3, offsetVoltage3);
-        current4 = readCurrent(ACS712Pin4, offsetVoltage4); 
+
     }
 }
 void publishDeviceStatus() { 
@@ -511,6 +517,9 @@ void handleBulbControl() {
   lastBulbButtonState = BulbButtonState;
 }
 void updateStatusDisplay() {
+    if (millis() - lastMeasurementTime >= measurementInterval) {
+    measureCurrents();
+ }
     readSensors();
     calibrateSensors();
     automaticfeeding(); 
@@ -580,65 +589,67 @@ void updateStatusDisplay() {
         case 2:  
             if (current1 > 0.1)
              {
-            display.print(F("Fan active: "));
-            display.print(String(current1, 3));
-            display.print(F(" A - "));
+            display.print(F("Fan: active("));
+            display.print(String(current1, 2));
+            display.print(F("A - "));
             display.print(String(offsetVoltage1, 2));
-            display.println(F("V"));
+            display.println(F("V)"));
              }
              else 
              {
-            display.print(F("Fan unactive: "));
-            display.print(String(current1, 3));
-            display.print(F(" A - "));
+            display.print(F("Fan: unactive("));
+            display.print(String(current1, 2));
+            display.print(F("A - "));
             display.print(String(offsetVoltage1, 2));
-            display.println(F("V"));
+            display.println(F("V)"));
              };
              if (current2 > 0.1)
              {
-            display.print(F("Pump active: "));
-            display.print(String(current2, 3));
-            display.print(F(" A - "));
+            display.print(F("Pump: active("));
+            display.print(String(current2, 2));
+            display.print(F("A - "));
             display.print(String(offsetVoltage2, 2));
-            display.println(F("V"));
+            display.println(F("V)"));
              }
              else
              {
-            display.print(F("Pump unactive: "));
-            display.print(String(current2, 3));
-            display.print(F(" A - "));
+            display.print(F("Pump: unactive("));
+            display.print(String(current2, 2));
+            display.print(F("A - "));
             display.print(String(offsetVoltage2, 2));
-            display.println(F("V"));
+            display.println(F("V)"));
              };
              if (current3 > 0.1)
              {
-            display.print(F("Pump2 active: "));
-            display.print(String(current3, 3));
-            display.println(F(" A"));
+            display.print(F("Pump2: active("));
+            display.print(String(current3, 2));
+            display.print(F("A - "));
+            display.print(String(offsetVoltage3, 2));
+            display.println(F("V)"));
              }
              else
              {
-            display.print(F("Pump2 unactive: "));
-            display.print(String(current3, 3));
-            display.print(F(" A - "));
+            display.print(F("Pump2: unactive("));
+            display.print(String(current3, 2));
+            display.print(F("A - "));
             display.print(String(offsetVoltage3, 2));
-            display.println(F("V"));
+            display.println(F("V)"));
              };
              if (current4 > 0.1)
              {
-            display.print(F("Bulb active: "));
-            display.print(String(current4, 3));
-            display.print(F(" A - "));
+            display.print(F("Bulb: active("));
+            display.print(String(current4, 2));
+            display.print(F("A - "));
             display.print(String(offsetVoltage4, 2));
-            display.println(F("V"));
+            display.println(F("V)"));
              }
               else
             {
-            display.print(F("Bulb unactive: "));
-            display.print(String(current4, 3));
-            display.print(F(" A - "));
+            display.print(F("Bulb: unactive("));
+            display.print(String(current4, 2));
+            display.print(F("A - "));
             display.print(String(offsetVoltage4, 2));
-            display.println(F("V"));
+            display.println(F("V)"));
             };
                 
             break;
@@ -648,6 +659,11 @@ void updateStatusDisplay() {
     display.display();
 }
 void loop() {
+   if (calibrating) {
+    calibrateSensors();
+  } else if (millis() - lastMeasurementTime >= measurementInterval) {
+    measureCurrents();
+  }
  readSensors();
  handleFanControl();
  handlePumpControl();
@@ -655,9 +671,6 @@ void loop() {
  handleBulbControl();
  handleServoControl();
  updateStatusDisplay();
- if (calibrating) {
-  calibrateSensors();
- }
  if (connectWiFi()) {
   connectMQTT();
   }
