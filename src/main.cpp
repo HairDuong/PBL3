@@ -42,8 +42,6 @@ const int mqtt_port PROGMEM = 1883;
 
 // Pin definitions
 #define servoPin 13
-#define TRIG_PIN1 16
-#define ECHO_PIN1 17 
 #define TRIG_PIN2 18
 #define ECHO_PIN2 19
 #define FAN_BUTTON_PIN 0
@@ -51,9 +49,9 @@ const int mqtt_port PROGMEM = 1883;
 #define PUMP_BUTTON_PIN 1
 #define PUMP_RELAY_PIN 27
 #define PUMP2_BUTTON_PIN 2
-#define PUMP2_RELAY_PIN 12
+#define PUMP2_RELAY_PIN 14
 #define MODE_BUTTON_PIN 5
-#define BULB_RELAY_PIN 14
+#define BULB_RELAY_PIN 12
 #define BULB_BUTTON_PIN 3
 #define SERVO_BUTTON_PIN 4 
 #define OLED_BUTTON_PIN 6 
@@ -63,7 +61,6 @@ const int mqtt_port PROGMEM = 1883;
 float temperature = 0.0;
 float humidity = 0.0;
 int airQuality = 0;
-long duration1;
 long duration2;
 float distance1=0.0;
 float distance2=0.0;
