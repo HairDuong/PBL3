@@ -15,7 +15,7 @@ const long gmtOffset_sec = 7 * 3600;
 const int daylightOffset_sec = 0;
 
 // Wi-Fi and MQTT settings
-const char *ssid PROGMEM = "Hoang11 ";
+const char *ssid PROGMEM = "Hoang11";
 const char *password PROGMEM = "123456789000";
 const char *mqtt_broker PROGMEM = "broker.emqx.io";
 const char *topic0 PROGMEM = "esp32/temp";
@@ -42,9 +42,6 @@ const int mqtt_port PROGMEM = 1883;
 
 // Pin definitions
 #define servoPin 13
-#define DHTPIN 4
-#define DHTTYPE DHT11
-#define MQ135_PIN 34
 #define TRIG_PIN1 16
 #define ECHO_PIN1 17 
 #define TRIG_PIN2 18
@@ -60,15 +57,7 @@ const int mqtt_port PROGMEM = 1883;
 #define BULB_BUTTON_PIN 3
 #define SERVO_BUTTON_PIN 4 
 #define OLED_BUTTON_PIN 6 
-#define SENSITIVITY 0.185  
-#define ADC_RESOLUTION 4095.0  
-#define ADC_VOLTAGE 3.3 
-#define SAMPLING_COUNT 1000  
-#define NO_CURRENT_THRESHOLD 0.1  
-const int ACS712Pin1 = 35;       
-const int ACS712Pin2 = 32;       
-const int ACS712Pin3 = 33;      
-const int ACS712Pin4 = 25; 
+ 
 
 // Global variables
 float temperature = 0.0;
@@ -97,12 +86,14 @@ int targetMinute = 43;
 int targetSecond = 0;
 int targetSecondclose = 0;
 const unsigned long debounceTime = 50;
+
 int lastModeButtonState = HIGH;
 bool isServoAt90 = false;  
 int lastServoButtonState = HIGH;  
 struct tm timeinfo;
 int currentScreen = 0;
 
+unsigned long previousRecevie=0;
 unsigned long previousMillisPump = 0; 
 unsigned long previousMillisPump2 = 0;
 unsigned long previousMillisServo = 0;
@@ -118,30 +109,20 @@ unsigned long previousMillisWiFi = 0;
 unsigned long previousMillisMQTT = 0;
 const long wifiInterval = 500;  
 const long mqttInterval = 2000; 
-const float sensitivity = 0.185; 
-const int numSamples = 100;      
-const unsigned long measurementInterval = 2000;
-float offsetVoltage1 = 0.0;      
-float offsetVoltage2 = 0.0;      
-float offsetVoltage3 = 0.0;      
-float offsetVoltage4 = 0.0;      
-unsigned long lastMeasurementTime = 0; 
-bool calibrating = true;        
-int calibrationSamples = 1000;  
-long calibrationSum1 = 0;        
-long calibrationSum2 = 0;        
-long calibrationSum3 = 0;       
-long calibrationSum4 = 0;        
-int calibrationCount = 0;
 float current1;
 float current2;
 float current3;
 float current4;
+float offsetVoltage1 = 0.0;      
+float offsetVoltage2 = 0.0;      
+float offsetVoltage3 = 0.0;      
+float offsetVoltage4 = 0.0;     
+
 
 WiFiClient espClient;
 PubSubClient client(espClient);
 Servo myServo;
-DHT dht(DHTPIN, DHTTYPE);
+
 enum ControlMode { MANUAL, AUTOMATIC };
 ControlMode currentMode = MANUAL;
 
@@ -228,11 +209,11 @@ void setup() {
   Serial.begin(9600);
   Wire.begin();
   pcf8574.begin();
-  pinMode(TRIG_PIN1, OUTPUT);
-  pinMode(ECHO_PIN1, INPUT_PULLDOWN);
   pinMode(TRIG_PIN2, OUTPUT);
   pinMode(ECHO_PIN2, INPUT_PULLDOWN);
-  dht.begin();
+  Serial2.begin(9600, SERIAL_8N1, 16, 17); 
+
+ 
   myServo.attach(servoPin);
   configTime(gmtOffset_sec, daylightOffset_sec, "pool.ntp.org", "time.nist.gov");
   myServo.write(0);
@@ -253,7 +234,6 @@ void setup() {
   pinMode(BULB_RELAY_PIN, OUTPUT);        
   digitalWrite(BULB_RELAY_PIN, LOW);   
 
-
   WiFi.begin(ssid, password);
   client.setServer(mqtt_broker, mqtt_port);
   client.setCallback(callback);
@@ -268,57 +248,6 @@ void setup() {
   client.subscribe(topic16);
   client.subscribe(topic17);
 }
-void calibrateSensors() {
-  if (calibrationCount < calibrationSamples) {
-    calibrationSum1 += analogRead(ACS712Pin1);
-    calibrationSum2 += analogRead(ACS712Pin2);
-    calibrationSum3 += analogRead(ACS712Pin3);
-    calibrationSum4 += analogRead(ACS712Pin4); 
-    calibrationCount++;
-  } else {
-    offsetVoltage1 = (calibrationSum1 / (float)calibrationSamples) * (5.0 / 1023.0);
-    offsetVoltage2 = (calibrationSum2 / (float)calibrationSamples) * (5.0 / 1023.0);
-    offsetVoltage3 = (calibrationSum3 / (float)calibrationSamples) * (5.0 / 1023.0);
-    offsetVoltage4 = (calibrationSum4 / (float)calibrationSamples) * (5.0 / 1023.0);
-
-    calibrating = false; 
-  }
-}
-void measureCurrents() {
-  lastMeasurementTime = millis();
-
-   current1 = readCurrent(ACS712Pin1, offsetVoltage1);
-   current2 = readCurrent(ACS712Pin2, offsetVoltage2);
-   current3 = readCurrent(ACS712Pin3, offsetVoltage3);
-   current4 = readCurrent(ACS712Pin4, offsetVoltage4);
-}
-float readCurrent(int pin, float offsetVoltage) {
-  const int samplingTime = 100; 
-  unsigned long startTime = millis();
-  long sum = 0;
-  int numSamples = 0;
-
-  while (millis() - startTime < samplingTime) {
-    sum += analogRead(pin);
-    numSamples++;
-  }
-
-  float voltage = (sum / (float)numSamples) * (5.0 / 1023.0);
-  float current = abs((voltage - offsetVoltage) / sensitivity) / 3.2;
-  return current;
-}
-String readUltrasonicSensor1() {
-  digitalWrite(TRIG_PIN1,0); 
-  delayMicroseconds(2); 
-  digitalWrite(TRIG_PIN1,1); 
-  delayMicroseconds(10); 
-  digitalWrite(TRIG_PIN1,0);
-
-  duration1 = pulseIn (ECHO_PIN1, HIGH);
-  
-   distance1 = (duration1 / 2 / 29.412); 
-  return String(distance1);
-}
 String readUltrasonicSensor2() {
   digitalWrite(TRIG_PIN2,0); 
   delayMicroseconds(2); 
@@ -331,32 +260,75 @@ String readUltrasonicSensor2() {
    distance2 = (duration2 / 2 / 29.412); 
   return String(distance2);
 }
-String foodrate (){
-  float foodAvailable = (1.0- (distance1/distanceOrigin))*100.0;
-  return String(foodAvailable);
-}
 String waterrate (){
   float waterAvailable = (1.0- (distance2/distanceOrigin))*100.0;
   return String(waterAvailable);
 }
+void receive()
+{
+    unsigned long currentMillis = millis();
+     if (currentMillis - previousRecevie >= 100) {
+         previousRecevie = currentMillis;
+  if (Serial2.available()) {
+    String data = Serial2.readStringUntil('\n');  // Đọc dữ liệu từ UART
+    Serial.print("Dữ liệu nhận được: ");
+    Serial.println(data);
+
+    // Nếu bạn muốn tách từng giá trị dòng điện từ dữ liệu
+    //float current1, current2, current3, current4;
+    int commaIndex1 = data.indexOf(',');
+    int commaIndex2 = data.indexOf(',', commaIndex1 + 1);
+    int commaIndex3 = data.indexOf(',', commaIndex2 + 1);
+    int commaIndex4 = data.indexOf(',', commaIndex3 + 1);
+    int commaIndex5 = data.indexOf(',', commaIndex4 + 1);
+    int commaIndex6 = data.indexOf(',', commaIndex5 + 1);
+    int commaIndex7 = data.indexOf(',', commaIndex6 + 1);
+    int commaIndex8 = data.indexOf(',', commaIndex7 + 1);
+    int commaIndex9 = data.indexOf(',', commaIndex8 +1);
+    int commaIndex10 = data.indexOf(',', commaIndex9 + 1);
+    int commaIndex11 = data.indexOf(',', commaIndex10 + 1);
+    int commaIndex12 = data.indexOf(',', commaIndex11 +1);
+    
+
+    current1 = data.substring(1, commaIndex1).toFloat();
+    current2 = data.substring(commaIndex1 + 1, commaIndex2).toFloat();
+    current3 = data.substring(commaIndex2 + 1, commaIndex3).toFloat();
+    current4 = data.substring(commaIndex3 + 1,commaIndex4).toFloat();
+    rate1    = data.substring(commaIndex4 + 1,commaIndex5);
+    offsetVoltage1    = data.substring(commaIndex5 + 1,commaIndex6).toFloat();
+    offsetVoltage2    = data.substring(commaIndex6 + 1, commaIndex7).toFloat();
+    offsetVoltage3    = data.substring(commaIndex7 + 1,commaIndex8).toFloat();
+    offsetVoltage4    = data.substring(commaIndex8 + 1,commaIndex9).toFloat();
+    temperature    = data.substring(commaIndex9 + 1, commaIndex10).toFloat();
+    humidity    = data.substring(commaIndex10 + 1,commaIndex11).toFloat();
+    airQuality    = data.substring(commaIndex11 + 1,commaIndex12).toFloat();
+  }
+    // In ra các giá trị dòng điện
+    // Serial.print("Dòng điện 1: ");
+    // Serial.println(current1);
+    // Serial.print("Dòng điện 2: ");
+    // Serial.println(current2);
+    // Serial.print("Dòng điện 3: ");
+    // Serial.println(current3);
+    // Serial.print("Dòng điện 4: ");
+    // Serial.println(current4);
+    // Serial.print("Dòng điện 4: ");
+    // Serial.println(rate1);
+  }
+}
 void readSensors() {
   unsigned long currentMillis = millis();
-    if (currentMillis - previousSensorMillis >= updateSensorInterval) 
-    {
+    if (currentMillis - previousSensorMillis >= updateSensorInterval) {
         previousSensorMillis = currentMillis;
-        temperature = dht.readTemperature();
-        humidity = dht.readHumidity();
-        airQuality = analogRead(MQ135_PIN);
-        String ultrasonicDistance1 = readUltrasonicSensor1();
-        rate1 = foodrate();
+            
         String ultrasonicDistance2 = readUltrasonicSensor2();
         rate2 = waterrate();
-
     }
 }
 void publishDeviceStatus() { 
-  calibrateSensors();
+
   readSensors();
+ 
   String payload1 = "Fan active: " + String(current1, 3) + " A\n";
   payload1 += "Fan Voltage: " + String(offsetVoltage1, 3) + " V";
   String payload2 = "Pump active: " + String(current2, 3) + " A\n";
@@ -517,11 +489,8 @@ void handleBulbControl() {
   lastBulbButtonState = BulbButtonState;
 }
 void updateStatusDisplay() {
-    if (millis() - lastMeasurementTime >= measurementInterval) {
-    measureCurrents();
- }
     readSensors();
-    calibrateSensors();
+    receive();
     automaticfeeding(); 
     char timeStringBuff[10];
     strftime(timeStringBuff, sizeof(timeStringBuff), "%H:%M:%S", &timeinfo); 
@@ -533,7 +502,7 @@ void updateStatusDisplay() {
         currentScreen = (currentScreen + 1) % 3;  
     }
     lastOledButtonState = OledButtonState;
-
+    
     display.clearDisplay();
     display.setTextSize(1);
     display.setTextColor(SH110X_WHITE);
@@ -589,67 +558,67 @@ void updateStatusDisplay() {
         case 2:  
             if (current1 > 0.1)
              {
-            display.print(F("Fan: active("));
-            display.print(String(current1, 2));
-            display.print(F("A - "));
+            display.print(F("Fan active: "));
+            display.print(String(current1, 3));
+            display.print(F(" A - "));
             display.print(String(offsetVoltage1, 2));
-            display.println(F("V)"));
+            display.println(F("V"));
              }
              else 
              {
-            display.print(F("Fan: unactive("));
-            display.print(String(current1, 2));
-            display.print(F("A - "));
+            display.print(F("Fan unactive: "));
+            display.print(String(current1, 3));
+            display.print(F(" A - "));
             display.print(String(offsetVoltage1, 2));
-            display.println(F("V)"));
+            display.println(F("V"));
              };
              if (current2 > 0.1)
              {
-            display.print(F("Pump: active("));
-            display.print(String(current2, 2));
-            display.print(F("A - "));
+            display.print(F("Pump active: "));
+            display.print(String(current2, 3));
+            display.print(F(" A - "));
             display.print(String(offsetVoltage2, 2));
-            display.println(F("V)"));
+            display.println(F("V"));
              }
              else
              {
-            display.print(F("Pump: unactive("));
-            display.print(String(current2, 2));
-            display.print(F("A - "));
+            display.print(F("Pump unactive: "));
+            display.print(String(current2, 3));
+            display.print(F(" A - "));
             display.print(String(offsetVoltage2, 2));
-            display.println(F("V)"));
+            display.println(F("V"));
              };
              if (current3 > 0.1)
              {
-            display.print(F("Pump2: active("));
-            display.print(String(current3, 2));
-            display.print(F("A - "));
+            display.print(F("Pump2 active: "));
+            display.print(String(current3, 3));
+            display.println(F(" A"));
             display.print(String(offsetVoltage3, 2));
-            display.println(F("V)"));
+            display.println(F("V"));
              }
              else
              {
-            display.print(F("Pump2: unactive("));
-            display.print(String(current3, 2));
-            display.print(F("A - "));
+            display.print(F("Pump2 unactive: "));
+            display.print(String(current3, 3));
+            display.print(F(" A - "));
             display.print(String(offsetVoltage3, 2));
-            display.println(F("V)"));
+            display.println(F("V"));
              };
              if (current4 > 0.1)
              {
-            display.print(F("Bulb: active("));
-            display.print(String(current4, 2));
-            display.print(F("A - "));
+            display.print(F("Bulb active: "));
+            display.print(String(current4, 3));
+            display.print(F(" A - "));
             display.print(String(offsetVoltage4, 2));
-            display.println(F("V)"));
+            display.println(F("V"));
              }
               else
             {
-            display.print(F("Bulb: unactive("));
-            display.print(String(current4, 2));
-            display.print(F("A - "));
+            display.print(F("Bulb unactive: "));
+            display.print(String(current4, 3));
+            display.print(F(" A - "));
             display.print(String(offsetVoltage4, 2));
-            display.println(F("V)"));
+            display.println(F("V"));
             };
                 
             break;
@@ -659,19 +628,15 @@ void updateStatusDisplay() {
     display.display();
 }
 void loop() {
-   if (calibrating) {
-    calibrateSensors();
-  } else if (millis() - lastMeasurementTime >= measurementInterval) {
-    measureCurrents();
-  }
- readSensors();
- handleFanControl();
- handlePumpControl();
- handlePump2Control();
- handleBulbControl();
- handleServoControl();
- updateStatusDisplay();
- if (connectWiFi()) {
+  readSensors();
+  handleFanControl();
+  handlePumpControl();
+  handlePump2Control();
+  handleBulbControl();
+  handleServoControl();
+
+  updateStatusDisplay();
+  if (connectWiFi()) {
   connectMQTT();
   }
   if (client.connected()) {
