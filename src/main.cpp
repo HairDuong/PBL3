@@ -15,30 +15,30 @@ const long gmtOffset_sec = 7 * 3600;
 const int daylightOffset_sec = 0;
 
 // Wi-Fi and MQTT settings
-const char *ssid PROGMEM = "Hoang11";
-const char *password PROGMEM = "123456789000";
-const char *mqtt_broker PROGMEM = "broker.emqx.io";
-const char *topic0 PROGMEM = "esp32/temp";
-const char *topic1 PROGMEM = "esp32/hum";
-const char *topic2 PROGMEM = "esp32/air";
-const char *topic3 PROGMEM = "esp32/foodrate";
-const char *topic4 PROGMEM = "esp32/fan/control";
-const char *topic5 PROGMEM = "esp32/pump/control";
-const char *topic6 PROGMEM = "esp32/mode";
-const char *topic7 PROGMEM = "esp32/servo/control";
-const char *topic8 PROGMEM = "esp32/bulb/control";
-const char *topic9 PROGMEM = "esp32/pump2/control";
-const char *topic10 PROGMEM = "esp32/fan/test";
-const char *topic11 PROGMEM = "esp32/pump/test";
-const char *topic12 PROGMEM = "esp32/pump2/test";
-const char *topic13 PROGMEM = "esp32/bulb/test";
-const char *topic14 PROGMEM = "esp32/waterrate";
-const char *topic15 PROGMEM = "targetHour";
-const char *topic16 PROGMEM = "targetMinute";
-const char *topic17 PROGMEM = "targetSecond";
-const char *mqtt_username PROGMEM = "hoangpham1";
-const char *mqtt_password PROGMEM = "123456";
-const int mqtt_port PROGMEM = 1883;
+const char *ssid  = "Hoang11";
+const char *password = "123456789000";
+const char *mqtt_broker  = "broker.emqx.io";
+const char *topic0  = "esp32/temp";
+const char *topic1  = "esp32/hum";
+const char *topic2  = "esp32/air";
+const char *topic3 = "esp32/foodrate";
+const char *topic4  = "esp32/fan/control";
+const char *topic5  = "esp32/pump/control";
+const char *topic6  = "esp32/mode";
+const char *topic7  = "esp32/servo/control";
+const char *topic8  = "esp32/bulb/control";
+const char *topic9  = "esp32/pump2/control";
+const char *topic10  = "esp32/fan/test";
+const char *topic11  = "esp32/pump/test";
+const char *topic12  = "esp32/pump2/test";
+const char *topic13  = "esp32/bulb/test";
+const char *topic14  = "esp32/waterrate";
+const char *topic15  = "targetHour";
+const char *topic16  = "targetMinute";
+const char *topic17  = "targetSecond";
+const char *mqtt_username  = "hoangpham1";
+const char *mqtt_password  = "123456";
+const int mqtt_port  = 1883;
 
 // Pin definitions
 #define servoPin 13
@@ -156,6 +156,15 @@ bool connectMQTT() {
         Serial.println("Failed to connect to MQTT, retrying...");
       }
     }
+     client.subscribe(topic4);
+  client.subscribe(topic5);
+  client.subscribe(topic6);
+  client.subscribe(topic7);
+  client.subscribe(topic8);
+  client.subscribe(topic9);
+  client.subscribe(topic15);
+  client.subscribe(topic16);
+  client.subscribe(topic17);
     return false;
   }
   return true;
@@ -235,15 +244,7 @@ void setup() {
   client.setServer(mqtt_broker, mqtt_port);
   client.setCallback(callback);
 
-  client.subscribe(topic4);
-  client.subscribe(topic5);
-  client.subscribe(topic6);
-  client.subscribe(topic7);
-  client.subscribe(topic8);
-  client.subscribe(topic9);
-  client.subscribe(topic15);
-  client.subscribe(topic16);
-  client.subscribe(topic17);
+ 
 }
 String readUltrasonicSensor2() {
   digitalWrite(TRIG_PIN2,0); 
@@ -300,17 +301,7 @@ void receive()
     humidity    = data.substring(commaIndex10 + 1,commaIndex11).toFloat();
     airQuality    = data.substring(commaIndex11 + 1,commaIndex12).toFloat();
   }
-    // In ra các giá trị dòng điện
-    // Serial.print("Dòng điện 1: ");
-    // Serial.println(current1);
-    // Serial.print("Dòng điện 2: ");
-    // Serial.println(current2);
-    // Serial.print("Dòng điện 3: ");
-    // Serial.println(current3);
-    // Serial.print("Dòng điện 4: ");
-    // Serial.println(current4);
-    // Serial.print("Dòng điện 4: ");
-    // Serial.println(rate1);
+   
   }
 }
 void readSensors() {
@@ -346,9 +337,9 @@ void publishDeviceStatus() {
   client.publish(topic1, String(humidity).c_str());
   client.publish(topic2, String(airQuality).c_str());
   client.publish(topic3, String(rate1).c_str());
-  client.publish(topic4, isFanOn ? "ON" : "OFF");
+ 
   client.publish(topic5, isPumpOn ? "ON" : "OFF");
-  client.publish(topic6, currentMode == MANUAL ? "Manual" : "Automatic");
+ 
   client.publish(topic7, isServoAt90 ? "ON" : "OFF");
   client.publish(topic8, isBulbOn ? "ON" : "OFF");
   client.publish(topic9, isPump2On ? "ON" : "OFF");
@@ -400,7 +391,7 @@ void handleFanControl() {
         previousMillisFan = currentMillis;
         isFanOn = !isFanOn;  
         digitalWrite(FAN_RELAY_PIN, isFanOn ? HIGH : LOW);  
-        publishDeviceStatus();
+        client.publish(topic4, isFanOn ? "ON" : "OFF");
       }
       lastFanButtonState = fanButtonState; 
       break;
@@ -412,7 +403,7 @@ void handleFanControl() {
         isFanOn = false; 
       }
       digitalWrite(FAN_RELAY_PIN, isFanOn ? HIGH : LOW);  
-      publishDeviceStatus();
+      client.publish(topic4, isFanOn ? "ON" : "OFF");
       break;
     }
   }
@@ -421,7 +412,7 @@ void handleFanControl() {
   if (modeButtonState == LOW && lastModeButtonState == HIGH && (currentMillis - previousMillisMode >= debounceInterval)) {
     previousMillisMode = currentMillis;
     currentMode = (currentMode == MANUAL) ? AUTOMATIC : MANUAL; 
-    publishDeviceStatus();
+    client.publish(topic6, currentMode == MANUAL ? "Manual" : "Automatic");
   }
   lastModeButtonState = modeButtonState; 
 }
@@ -631,13 +622,7 @@ void loop() {
   handlePump2Control();
   handleBulbControl();
   handleServoControl();
-
   updateStatusDisplay();
-  if (connectWiFi()) {
-  connectMQTT();
-  }
-  if (client.connected()) {
   publishDeviceStatus();
   client.loop();
-  }
 }
