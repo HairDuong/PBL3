@@ -15,30 +15,30 @@ const long gmtOffset_sec = 7 * 3600;
 const int daylightOffset_sec = 0;
 
 // Wi-Fi and MQTT settings
-const char *ssid  = "Hoang11";
-const char *password = "123456789000";
-const char *mqtt_broker  = "broker.emqx.io";
-const char *topic0  = "esp32/temp";
-const char *topic1  = "esp32/hum";
-const char *topic2  = "esp32/air";
-const char *topic3 = "esp32/foodrate";
-const char *topic4  = "esp32/fan/control";
-const char *topic5  = "esp32/pump/control";
-const char *topic6  = "esp32/mode";
-const char *topic7  = "esp32/servo/control";
-const char *topic8  = "esp32/bulb/control";
-const char *topic9  = "esp32/pump2/control";
-const char *topic10  = "esp32/fan/test";
-const char *topic11  = "esp32/pump/test";
-const char *topic12  = "esp32/pump2/test";
-const char *topic13  = "esp32/bulb/test";
-const char *topic14  = "esp32/waterrate";
-const char *topic15  = "targetHour";
-const char *topic16  = "targetMinute";
-const char *topic17  = "targetSecond";
-const char *mqtt_username  = "hoangpham1";
-const char *mqtt_password  = "123456";
-const int mqtt_port  = 1883;
+const char *ssid PROGMEM = "HOANGLATAO";
+const char *password PROGMEM = "123456789";
+const char *mqtt_broker PROGMEM = "broker.emqx.io";
+const char *topic0 PROGMEM = "esp32/tem";
+const char *topic1 PROGMEM = "esp32/hum";
+const char *topic2 PROGMEM = "esp32/air";
+const char *topic3 PROGMEM = "esp32/foodrate";
+const char *topic4 PROGMEM = "esp32/quat/control";
+const char *topic5 PROGMEM = "esp32/maybom/control";
+
+const char *topic7 PROGMEM = "esp32/servo/control";
+const char *topic8 PROGMEM = "esp32/den/control";
+const char *topic9 PROGMEM = "esp32/maybom2/control";
+const char *topic10 PROGMEM = "esp32/quat/test";
+const char *topic11 PROGMEM = "esp32/maybom1/test";
+const char *topic12 PROGMEM = "esp32/maybom2/test";
+const char *topic13 PROGMEM = "esp32//test";
+const char *topic14 PROGMEM = "esp32/waterrate";
+const char *topic15 PROGMEM = "targetHour";
+const char *topic16 PROGMEM = "targetMinute";
+const char *topic17 PROGMEM = "targetSecond";
+const char *mqtt_username PROGMEM = "hoangpham1";
+const char *mqtt_password PROGMEM = "123456";
+const int mqtt_port PROGMEM = 1883;
 
 // Pin definitions
 #define servoPin 13
@@ -98,7 +98,15 @@ unsigned long previousMillisFan = 0;
 unsigned long previousMillisBulb = 0;
 unsigned long previousMillisMode = 0;
 unsigned long previousMillisOled = 0;
-const long debounceInterval = 50;  
+unsigned long previousMillispublish = 0;
+const long debounceInterval1 = 50;  
+const long debounceInterval2 = 50;  
+const long debounceInterval3 = 50;  
+const long debounceInterval4 = 50;  
+const long debounceInterval5 = 50;  
+const long debounceInterval6 = 50;  
+const long debounceInterval7 = 50;  
+const long debounceInterval8 = 50;  
 unsigned long previousMillis = 0;
 const long interval = 5000;
 float zeroPointVoltage1 = 2.5; 
@@ -106,6 +114,7 @@ unsigned long previousMillisWiFi = 0;
 unsigned long previousMillisMQTT = 0;
 const long wifiInterval = 500;  
 const long mqttInterval = 2000; 
+const long publishInterval = 2000; 
 float current1;
 float current2;
 float current3;
@@ -129,53 +138,15 @@ unsigned long previousSensorMillis = 0;
 const unsigned long updateSensorInterval = 2000; 
 bool showSensorData = true;
 
-bool connectWiFi() {
-  if (WiFi.status() != WL_CONNECTED) {
-    unsigned long currentMillis = millis();
-    if (currentMillis - previousMillisWiFi >= wifiInterval) {
-      previousMillisWiFi = currentMillis;
-      Serial.println("Connecting to WiFi...");
-      WiFi.begin(ssid, password);
-      Serial.println("Connected to the WiFi network");
-    }
-    return false;
-  }
-  
-  return true;
-}
-bool connectMQTT() {
-  if (!client.connected()) {
-    unsigned long currentMillis = millis();
-    if (currentMillis - previousMillisMQTT >= mqttInterval) {
-      previousMillisMQTT = currentMillis;
-       String client_id = "esp32-client-";
-      client_id += String(WiFi.macAddress());
-      if (client.connect(client_id.c_str(), mqtt_username, mqtt_password)) {
-      Serial.println("Public emqx mqtt broker connected");
-      } else {
-        Serial.println("Failed to connect to MQTT, retrying...");
-      }
-    }
-     client.subscribe(topic4);
-  client.subscribe(topic5);
-  client.subscribe(topic6);
-  client.subscribe(topic7);
-  client.subscribe(topic8);
-  client.subscribe(topic9);
-  client.subscribe(topic15);
-  client.subscribe(topic16);
-  client.subscribe(topic17);
-    return false;
-  }
-  return true;
-}
+
+
 void callback(char *topic, byte *payload, unsigned int length) {
   String message;
   for (int i = 0; i < length; i++) message += (char)payload[i];
 
   if (String(topic) == topic4) isFanOn = (message == "ON");
   if (String(topic) == topic5) isPumpOn = (message == "ON");
-  if (String(topic) == topic6) currentMode = (message == "Manual") ? MANUAL : AUTOMATIC;
+ 
   if (String(topic) == topic7) myServo.write(message == "ON" ? 90 : 0);
   if (String(topic) == topic8) isBulbOn = (message == "ON");
   if (String(topic) == topic9) isPump2On = (message == "ON");
@@ -241,10 +212,38 @@ void setup() {
   digitalWrite(BULB_RELAY_PIN, LOW);   
 
   WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+     unsigned long currentMillis = millis();
+    if (currentMillis - previousMillisWiFi >= wifiInterval) {
+      previousMillisWiFi = currentMillis;
+      Serial.println("Connecting to WiFi...");
+      WiFi.begin(ssid, password);
+      Serial.println("Connected to the WiFi network");
+    }
+  }
+  Serial.println("Connected to the WiFi network");
   client.setServer(mqtt_broker, mqtt_port);
   client.setCallback(callback);
+  while (!client.connected()) {
+    unsigned long currentMillis = millis();
+    if (currentMillis - previousMillisMQTT >= mqttInterval) {
+      previousMillisMQTT = currentMillis;
+       String client_id = "esp32-client-";
+      client_id += String(WiFi.macAddress());
+      if (client.connect(client_id.c_str(), mqtt_username, mqtt_password)) {
+      Serial.println("Public emqx mqtt broker connected");
+      }
+  }
+  }
+  client.subscribe(topic4);
+  client.subscribe(topic5);
 
- 
+  client.subscribe(topic7);
+  client.subscribe(topic8);
+  client.subscribe(topic9);
+  client.subscribe(topic15);
+  client.subscribe(topic16);
+  client.subscribe(topic17);
 }
 String readUltrasonicSensor2() {
   digitalWrite(TRIG_PIN2,0); 
@@ -301,7 +300,17 @@ void receive()
     humidity    = data.substring(commaIndex10 + 1,commaIndex11).toFloat();
     airQuality    = data.substring(commaIndex11 + 1,commaIndex12).toFloat();
   }
-   
+    // In ra các giá trị dòng điện
+    // Serial.print("Dòng điện 1: ");
+    // Serial.println(current1);
+    // Serial.print("Dòng điện 2: ");
+    // Serial.println(current2);
+    // Serial.print("Dòng điện 3: ");
+    // Serial.println(current3);
+    // Serial.print("Dòng điện 4: ");
+    // Serial.println(current4);
+    // Serial.print("Dòng điện 4: ");
+    // Serial.println(rate1);
   }
 }
 void readSensors() {
@@ -316,60 +325,26 @@ void readSensors() {
 void publishDeviceStatus() { 
 
   readSensors();
- 
-  String payload1 = "Fan active: " + String(current1, 3) + " A\n";
-  payload1 += "Fan Voltage: " + String(offsetVoltage1, 3) + " V";
-  String payload2 = "Pump active: " + String(current2, 3) + " A\n";
-  payload2 += "Pump Voltage: " + String(offsetVoltage2, 3) + " V";
-  String payload3 = "Pump2 active: " + String(current3, 3) + " A\n";
-  payload3 += "Pump2 Voltage: " + String(offsetVoltage3, 3) + " V";
-  String payload4 = "Bulb active: " + String(current4, 3) + " A\n";
-  payload4 += "Bulb Voltage: " + String(offsetVoltage4, 3) + " V";
-  String payload5 = "Fan unactive: " + String(current1, 3) + " A\n";
-  payload5 += "Fan Voltage: " + String(offsetVoltage1, 3) + " V";
-  String payload6 = "Pump unactive: " + String(current2, 3) + " A\n";
-  payload6 += "Pump Voltage: " + String(offsetVoltage2, 3) + " V";
-  String payload7 = "Pump2 unactive: " + String(current3, 3) + " A\n";
-  payload7 += "Pump2 Voltage: " + String(offsetVoltage3, 3) + " V";
-  String payload8 = "Bulb unactive: " + String(current3, 3) + " A\n";
-  payload8 += "Bulb Voltage: " + String(offsetVoltage4, 3) + " V";
+  unsigned long currentMillis = millis(); 
+   if (currentMillis - previousMillispublish >= publishInterval) {
+      previousMillispublish = currentMillis;
   client.publish(topic0, String(temperature).c_str());
   client.publish(topic1, String(humidity).c_str());
   client.publish(topic2, String(airQuality).c_str());
   client.publish(topic3, String(rate1).c_str());
- 
-  client.publish(topic5, isPumpOn ? "ON" : "OFF");
- 
-  client.publish(topic7, isServoAt90 ? "ON" : "OFF");
-  client.publish(topic8, isBulbOn ? "ON" : "OFF");
-  client.publish(topic9, isPump2On ? "ON" : "OFF");
-  if (current1 > 0.1) {
-  client.publish(topic10,payload1.c_str());
-  } else {
-  client.publish(topic10,payload5.c_str());
-  };
-  if (current2 > 0.1) {
-  client.publish(topic11,payload2.c_str());
-  } else {
-  client.publish(topic11,payload6.c_str());
-  };
-  if (current3 > 0.1) {
-  client.publish(topic12,payload3.c_str());
-  } else {
-  client.publish(topic12,payload7.c_str());
-  };
-  if (current4 > 0.1) {
-  client.publish(topic13,payload4.c_str());
-  } else {
-  client.publish(topic13,payload8.c_str());
-  };
+
+  client.publish(topic10, current1 > 0.1 ? "Active" : "Unactive");
+  client.publish(topic11, current2 > 0.1 ? "Active" : "Unactive");
+  client.publish(topic12, current3 > 0.1 ? "Active" : "Unactive");
+  client.publish(topic13, current4 > 0.1 ? "Active" : "Unactive");
   client.publish(topic14, String(rate2).c_str());
+}
 }
 void handleServoControl() {
   unsigned long currentMillis = millis(); 
 
   int currentServoButtonState = pcf8574.read(4); 
-  if (currentServoButtonState == LOW && lastServoButtonState == HIGH && (currentMillis - previousMillisServo >= debounceInterval)) {
+  if (currentServoButtonState == LOW && lastServoButtonState == HIGH && (currentMillis - previousMillisServo >= debounceInterval1)) {
     previousMillisServo = currentMillis;
     isServoAt90 = !isServoAt90;
     if (isServoAt90) {
@@ -387,7 +362,7 @@ void handleFanControl() {
   switch (currentMode) {
     case MANUAL: {
       int fanButtonState = pcf8574.read(0); 
-      if (fanButtonState == LOW && lastFanButtonState == HIGH && (currentMillis - previousMillisFan >= debounceInterval)) {
+      if (fanButtonState == LOW && lastFanButtonState == HIGH && (currentMillis - previousMillisFan >= debounceInterval2)) {
         previousMillisFan = currentMillis;
         isFanOn = !isFanOn;  
         digitalWrite(FAN_RELAY_PIN, isFanOn ? HIGH : LOW);  
@@ -409,10 +384,10 @@ void handleFanControl() {
   }
 
   int modeButtonState = pcf8574.read(5); 
-  if (modeButtonState == LOW && lastModeButtonState == HIGH && (currentMillis - previousMillisMode >= debounceInterval)) {
+  if (modeButtonState == LOW && lastModeButtonState == HIGH && (currentMillis - previousMillisMode >= debounceInterval3)) {
     previousMillisMode = currentMillis;
     currentMode = (currentMode == MANUAL) ? AUTOMATIC : MANUAL; 
-    client.publish(topic6, currentMode == MANUAL ? "Manual" : "Automatic");
+    
   }
   lastModeButtonState = modeButtonState; 
 }
@@ -420,10 +395,10 @@ void handlePumpControl() {
   unsigned long currentMillis = millis();  
 
   bool PumpButtonState = pcf8574.read(1);  
-  if (PumpButtonState == LOW && lastPumpButtonState == HIGH && (currentMillis - previousMillisPump >= debounceInterval)) {
+  if (PumpButtonState == LOW && lastPumpButtonState == HIGH && (currentMillis - previousMillisPump >= debounceInterval4)) {
     previousMillisPump = currentMillis;
     isPumpOn = !isPumpOn;  
-    digitalWrite(PUMP_RELAY_PIN, isPumpOn ? HIGH : LOW);  
+    client.publish(topic5, isPumpOn ? "ON" : "OFF");  
   }
 
   lastPumpButtonState = PumpButtonState;  
@@ -434,11 +409,11 @@ void handlePump2Control() {
   switch (currentMode) {
     case MANUAL: {
       int Pump2ButtonState = pcf8574.read(2); 
-      if (Pump2ButtonState == LOW && lastPump2ButtonState == HIGH && (currentMillis - previousMillisPump2 >= debounceInterval)) {
+      if (Pump2ButtonState == LOW && lastPump2ButtonState == HIGH && (currentMillis - previousMillisPump2 >= debounceInterval5)) {
         previousMillisPump2 = currentMillis;
         isPump2On = !isPump2On;  
         digitalWrite(PUMP2_RELAY_PIN, isPump2On ? HIGH : LOW);  
-        publishDeviceStatus();  
+        client.publish(topic9, isPump2On ? "ON" : "OFF"); 
       }
       lastPump2ButtonState = Pump2ButtonState;
       break;
@@ -451,16 +426,16 @@ void handlePump2Control() {
         isPump2On = false; 
       }
       digitalWrite(PUMP2_RELAY_PIN, isPump2On ? HIGH : LOW);  
-      publishDeviceStatus();  
+      client.publish(topic9, isPump2On ? "ON" : "OFF");  
       break;
     }
   }
 
   int modeButtonState = pcf8574.read(5); 
-  if (modeButtonState == LOW && lastModeButtonState == HIGH && (currentMillis - previousMillisMode >= debounceInterval)) {
+  if (modeButtonState == LOW && lastModeButtonState == HIGH && (currentMillis - previousMillisMode >= debounceInterval6)) {
     previousMillisMode = currentMillis;
     currentMode = (currentMode == MANUAL) ? AUTOMATIC : MANUAL;  
-    publishDeviceStatus();  
+   
   }
   lastModeButtonState = modeButtonState; 
 }
@@ -468,10 +443,11 @@ void handleBulbControl() {
   unsigned long currentMillis = millis();  
 
   int BulbButtonState = pcf8574.read(3);
-  if (BulbButtonState == LOW && lastBulbButtonState == HIGH && (currentMillis - previousMillisBulb >= debounceInterval)) {
+  if (BulbButtonState == LOW && lastBulbButtonState == HIGH && (currentMillis - previousMillisBulb >= debounceInterval7)) {
     previousMillisBulb = currentMillis;
     isBulbOn = !isBulbOn;
     digitalWrite(BULB_RELAY_PIN, isBulbOn ? HIGH : LOW);
+    client.publish(topic8, isBulbOn ? "ON" : "OFF");
   }
 
   lastBulbButtonState = BulbButtonState;
@@ -485,7 +461,7 @@ void updateStatusDisplay() {
     unsigned long currentMillis = millis();
     
     int OledButtonState = pcf8574.read(6);
-    if (OledButtonState == LOW && lastOledButtonState == HIGH && (currentMillis - previousMillisOled >= debounceInterval)) {
+    if (OledButtonState == LOW && lastOledButtonState == HIGH && (currentMillis - previousMillisOled >= debounceInterval8)) {
         previousMillisOled = currentMillis;
         currentScreen = (currentScreen + 1) % 3;  
     }
@@ -616,7 +592,7 @@ void updateStatusDisplay() {
     display.display();
 }
 void loop() {
-  readSensors();
+  receive();
   handleFanControl();
   handlePumpControl();
   handlePump2Control();
@@ -625,4 +601,7 @@ void loop() {
   updateStatusDisplay();
   publishDeviceStatus();
   client.loop();
+ 
+
+  
 }
