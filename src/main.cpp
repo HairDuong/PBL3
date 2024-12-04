@@ -591,7 +591,42 @@ void updateStatusDisplay() {
     }
     display.display();
 }
+bool connectWiFi() {
+  if (WiFi.status() != WL_CONNECTED) {
+    unsigned long currentMillis = millis();
+    if (currentMillis - previousMillisWiFi >= wifiInterval) {
+      previousMillisWiFi = currentMillis;
+      Serial.println("Connecting to WiFi...");
+      WiFi.begin(ssid, password);
+      Serial.println("Connected to the WiFi network");
+    }
+    return false;
+  }
+  
+  return true;
+}
+bool connectMQTT() {
+  if (!client.connected()) {
+    unsigned long currentMillis = millis();
+    if (currentMillis - previousMillisMQTT >= mqttInterval) {
+      previousMillisMQTT = currentMillis;
+       String client_id = "esp32-client-";
+      client_id += String(WiFi.macAddress());
+      if (client.connect(client_id.c_str(), mqtt_username, mqtt_password)) {
+      Serial.println("Public emqx mqtt broker connected");
+      } else {
+        Serial.println("Failed to connect to MQTT, retrying...");
+      }
+    }
+    return false;
+  }
+  return true;
+}
+
 void loop() {
+  if (connectWiFi()) {
+  connectMQTT();
+  }
   receive();
   handleFanControl();
   handlePumpControl();
