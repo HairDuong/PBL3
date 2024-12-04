@@ -154,7 +154,7 @@ void callback(char *topic, byte *payload, unsigned int length) {
   if (String(topic) == topic16) targetMinute = message.toInt() ;
   if (String(topic) == topic17) 
   {targetSecond = message.toInt() ;
-   targetSecondclose = targetSecond +2;}
+   targetSecondclose = targetSecond +5;}
   
   digitalWrite(FAN_RELAY_PIN, isFanOn ? HIGH : LOW);
   digitalWrite(PUMP_RELAY_PIN, isPumpOn ? HIGH : LOW);
