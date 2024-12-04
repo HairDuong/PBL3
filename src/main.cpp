@@ -15,8 +15,8 @@ const long gmtOffset_sec = 7 * 3600;
 const int daylightOffset_sec = 0;
 
 // Wi-Fi and MQTT settings
-const char *ssid PROGMEM = "HOANGLATAO";
-const char *password PROGMEM = "123456789";
+const char *ssid PROGMEM = "Wifi HauDepTrai";
+const char *password PROGMEM = "hoang123";
 const char *mqtt_broker PROGMEM = "broker.emqx.io";
 const char *topic0 PROGMEM = "esp32/tem";
 const char *topic1 PROGMEM = "esp32/hum";
@@ -24,7 +24,7 @@ const char *topic2 PROGMEM = "esp32/air";
 const char *topic3 PROGMEM = "esp32/foodrate";
 const char *topic4 PROGMEM = "esp32/quat/control";
 const char *topic5 PROGMEM = "esp32/maybom/control";
-
+const char *topic6 PROGMEM = "esp32/fan/mode";
 const char *topic7 PROGMEM = "esp32/servo/control";
 const char *topic8 PROGMEM = "esp32/den/control";
 const char *topic9 PROGMEM = "esp32/maybom2/control";
@@ -41,7 +41,7 @@ const char *mqtt_password PROGMEM = "123456";
 const int mqtt_port PROGMEM = 1883;
 
 // Pin definitions
-#define servoPin 13
+#define servoPin 15
 #define TRIG_PIN2 18
 #define ECHO_PIN2 19
 #define FAN_BUTTON_PIN 0
@@ -146,7 +146,7 @@ void callback(char *topic, byte *payload, unsigned int length) {
 
   if (String(topic) == topic4) isFanOn = (message == "ON");
   if (String(topic) == topic5) isPumpOn = (message == "ON");
- 
+   if (String(topic) == topic6) currentMode = (message == "MANUAL") ? MANUAL : AUTOMATIC;
   if (String(topic) == topic7) myServo.write(message == "ON" ? 90 : 0);
   if (String(topic) == topic8) isBulbOn = (message == "ON");
   if (String(topic) == topic9) isPump2On = (message == "ON");
@@ -154,7 +154,7 @@ void callback(char *topic, byte *payload, unsigned int length) {
   if (String(topic) == topic16) targetMinute = message.toInt() ;
   if (String(topic) == topic17) 
   {targetSecond = message.toInt() ;
-   targetSecondclose = targetSecond +10;}
+   targetSecondclose = targetSecond +2;}
   
   digitalWrite(FAN_RELAY_PIN, isFanOn ? HIGH : LOW);
   digitalWrite(PUMP_RELAY_PIN, isPumpOn ? HIGH : LOW);
@@ -169,16 +169,14 @@ void automaticfeeding() {
 
   if (timeinfo.tm_hour == targetHour && timeinfo.tm_min == targetMinute && timeinfo.tm_sec == targetSecond) 
   {
-    if (myServo.read() != 90) 
+    if (myServo.read() != 0) 
     {
-      Serial.println("Đúng giờ! Điều khiển servo đến góc 90 độ.");
-      myServo.write(90);
+      myServo.write(0);
     }
   }
      if (timeinfo.tm_hour == targetHour && timeinfo.tm_min == targetMinute && timeinfo.tm_sec == (targetSecondclose)) {
      {
-      Serial.println("Servo đã ở góc 90 độ trong 10 giây. Quay lại góc 0 độ.");
-      myServo.write(0);  
+      myServo.write(90);  
      }
   }
 }
@@ -193,7 +191,7 @@ void setup() {
  
   myServo.attach(servoPin);
   configTime(gmtOffset_sec, daylightOffset_sec, "pool.ntp.org", "time.nist.gov");
-  myServo.write(0);
+  myServo.write(90);
   automaticfeeding();
   if (!display.begin(0x3C, true)) {
   Serial.println("OLED initialization failed");
@@ -237,7 +235,7 @@ void setup() {
   }
   client.subscribe(topic4);
   client.subscribe(topic5);
-
+  client.subscribe(topic6);
   client.subscribe(topic7);
   client.subscribe(topic8);
   client.subscribe(topic9);
@@ -300,17 +298,7 @@ void receive()
     humidity    = data.substring(commaIndex10 + 1,commaIndex11).toFloat();
     airQuality    = data.substring(commaIndex11 + 1,commaIndex12).toFloat();
   }
-    // In ra các giá trị dòng điện
-    // Serial.print("Dòng điện 1: ");
-    // Serial.println(current1);
-    // Serial.print("Dòng điện 2: ");
-    // Serial.println(current2);
-    // Serial.print("Dòng điện 3: ");
-    // Serial.println(current3);
-    // Serial.print("Dòng điện 4: ");
-    // Serial.println(current4);
-    // Serial.print("Dòng điện 4: ");
-    // Serial.println(rate1);
+   
   }
 }
 void readSensors() {
@@ -328,11 +316,11 @@ void publishDeviceStatus() {
   unsigned long currentMillis = millis(); 
    if (currentMillis - previousMillispublish >= publishInterval) {
       previousMillispublish = currentMillis;
+
   client.publish(topic0, String(temperature).c_str());
   client.publish(topic1, String(humidity).c_str());
   client.publish(topic2, String(airQuality).c_str());
   client.publish(topic3, String(rate1).c_str());
-
   client.publish(topic10, current1 > 0.1 ? "Active" : "Unactive");
   client.publish(topic11, current2 > 0.1 ? "Active" : "Unactive");
   client.publish(topic12, current3 > 0.1 ? "Active" : "Unactive");
@@ -357,39 +345,40 @@ void handleServoControl() {
   lastServoButtonState = currentServoButtonState;
 }
 void handleFanControl() {
-  unsigned long currentMillis = millis();  
+  unsigned long currentMillis = millis();
 
-  switch (currentMode) {
-    case MANUAL: {
-      int fanButtonState = pcf8574.read(0); 
-      if (fanButtonState == LOW && lastFanButtonState == HIGH && (currentMillis - previousMillisFan >= debounceInterval2)) {
-        previousMillisFan = currentMillis;
-        isFanOn = !isFanOn;  
-        digitalWrite(FAN_RELAY_PIN, isFanOn ? HIGH : LOW);  
-        client.publish(topic4, isFanOn ? "ON" : "OFF");
-      }
-      lastFanButtonState = fanButtonState; 
-      break;
-    }
-    case AUTOMATIC: {
-      if (temperature > 32.0) {
-        isFanOn = true;  
-      } else {
-        isFanOn = false; 
-      }
+  if (currentMode == MANUAL) {
+    int fanButtonState = pcf8574.read(0); 
+    if (fanButtonState == LOW && lastFanButtonState == HIGH && (currentMillis - previousMillisFan >= debounceInterval2)) {
+      previousMillisFan = currentMillis;
+      isFanOn = !isFanOn;  
       digitalWrite(FAN_RELAY_PIN, isFanOn ? HIGH : LOW);  
       client.publish(topic4, isFanOn ? "ON" : "OFF");
-      break;
+    }
+    lastFanButtonState = fanButtonState;
+
+  } else if (currentMode == AUTOMATIC) {
+    bool newFanState = temperature > 32.0;
+    if (isFanOn != newFanState) {
+      isFanOn = newFanState;
+      digitalWrite(FAN_RELAY_PIN, isFanOn ? HIGH : LOW);
+      client.publish(topic4, isFanOn ? "ON" : "OFF");
     }
   }
 
-  int modeButtonState = pcf8574.read(5); 
+  int modeButtonState = pcf8574.read(5);
   if (modeButtonState == LOW && lastModeButtonState == HIGH && (currentMillis - previousMillisMode >= debounceInterval3)) {
     previousMillisMode = currentMillis;
-    currentMode = (currentMode == MANUAL) ? AUTOMATIC : MANUAL; 
-    
+    currentMode = (currentMode == MANUAL) ? AUTOMATIC : MANUAL;
+    client.publish(topic6, currentMode == MANUAL ? "MANUAL" : "AUTOMATIC");
+
+    if (currentMode == AUTOMATIC) {
+      isFanOn = (temperature > 32.0);
+    }
+    digitalWrite(FAN_RELAY_PIN, isFanOn ? HIGH : LOW);
+    client.publish(topic4, isFanOn ? "ON" : "OFF");
   }
-  lastModeButtonState = modeButtonState; 
+  lastModeButtonState = modeButtonState;
 }
 void handlePumpControl() {
   unsigned long currentMillis = millis();  
@@ -397,48 +386,53 @@ void handlePumpControl() {
   bool PumpButtonState = pcf8574.read(1);  
   if (PumpButtonState == LOW && lastPumpButtonState == HIGH && (currentMillis - previousMillisPump >= debounceInterval4)) {
     previousMillisPump = currentMillis;
-    isPumpOn = !isPumpOn;  
+    isPumpOn = !isPumpOn;
+    digitalWrite(PUMP_RELAY_PIN, isPumpOn ? HIGH : LOW);  
     client.publish(topic5, isPumpOn ? "ON" : "OFF");  
   }
 
   lastPumpButtonState = PumpButtonState;  
 }
 void handlePump2Control() {
-  unsigned long currentMillis = millis();  
+  unsigned long currentMillis = millis();
 
-  switch (currentMode) {
-    case MANUAL: {
-      int Pump2ButtonState = pcf8574.read(2); 
-      if (Pump2ButtonState == LOW && lastPump2ButtonState == HIGH && (currentMillis - previousMillisPump2 >= debounceInterval5)) {
-        previousMillisPump2 = currentMillis;
-        isPump2On = !isPump2On;  
-        digitalWrite(PUMP2_RELAY_PIN, isPump2On ? HIGH : LOW);  
-        client.publish(topic9, isPump2On ? "ON" : "OFF"); 
-      }
-      lastPump2ButtonState = Pump2ButtonState;
-      break;
+  if (currentMode == MANUAL) {
+    int pump2ButtonState = pcf8574.read(2);
+    if (pump2ButtonState == LOW && lastPump2ButtonState == HIGH && (currentMillis - previousMillisPump2 >= debounceInterval5)) {
+      previousMillisPump2 = currentMillis;
+      isPump2On = !isPump2On;
+      digitalWrite(PUMP2_RELAY_PIN, isPump2On ? HIGH : LOW);
+      client.publish(topic9, isPump2On ? "ON" : "OFF");
     }
-
-    case AUTOMATIC: {
-      if (airQuality > 900) {
-        isPump2On = true;  
-      } else {
-        isPump2On = false; 
-      }
-      digitalWrite(PUMP2_RELAY_PIN, isPump2On ? HIGH : LOW);  
-      client.publish(topic9, isPump2On ? "ON" : "OFF");  
-      break;
+    lastPump2ButtonState = pump2ButtonState;
+  } else if (currentMode == AUTOMATIC) {
+    if (airQuality > 3000) {
+      isPump2On = true;
+    } else {
+      isPump2On = false;
     }
+    digitalWrite(PUMP2_RELAY_PIN, isPump2On ? HIGH : LOW);
+    client.publish(topic9, isPump2On ? "ON" : "OFF");
   }
 
-  int modeButtonState = pcf8574.read(5); 
+  int modeButtonState = pcf8574.read(5);
   if (modeButtonState == LOW && lastModeButtonState == HIGH && (currentMillis - previousMillisMode >= debounceInterval6)) {
-    previousMillisMode = currentMillis;
-    currentMode = (currentMode == MANUAL) ? AUTOMATIC : MANUAL;  
-   
+  previousMillisMode = currentMillis;
+  currentMode = (currentMode == MANUAL) ? AUTOMATIC : MANUAL;
+  
+
+  if (currentMode == MANUAL) {
+    digitalWrite(PUMP2_RELAY_PIN, isPump2On ? HIGH : LOW);
+  } else if (currentMode == AUTOMATIC) {
+    isPump2On = (airQuality > 3000);
+    digitalWrite(PUMP2_RELAY_PIN, isPump2On ? HIGH : LOW);
   }
-  lastModeButtonState = modeButtonState; 
+  client.publish(topic9, isPump2On ? "ON" : "OFF");
+ }
+
+  lastModeButtonState = modeButtonState;
 }
+
 void handleBulbControl() {
   unsigned long currentMillis = millis();  
 
@@ -459,7 +453,7 @@ void updateStatusDisplay() {
     char timeStringBuff[10];
     strftime(timeStringBuff, sizeof(timeStringBuff), "%H:%M:%S", &timeinfo); 
     unsigned long currentMillis = millis();
-    
+   
     int OledButtonState = pcf8574.read(6);
     if (OledButtonState == LOW && lastOledButtonState == HIGH && (currentMillis - previousMillisOled >= debounceInterval8)) {
         previousMillisOled = currentMillis;
